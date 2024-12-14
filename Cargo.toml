@@ -1,0 +1,15 @@
+[package]
+name = "load-orchestra"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alloy = { version = "0.8.0" , features = ["full"] }
+clap = { version = "4.5.23", features = ["cargo"] }
+poem = "3.1.5"
+rand = "0.8.5"
+reqwest = "0.12.9"
+serde = "1.0.215"
+serde_json = "1.0.133"
+sodiumoxide = "0.2.7"
+tokio = { version = "1.42.0", features = ["full"] }
