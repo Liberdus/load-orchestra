@@ -160,6 +160,15 @@ mod tests {
         let expected = "463bad7a09d224af5251be7d979cc8db3df37c422ea38d6c3986c54ee9c8f116".to_string();
 
         assert_eq!(expected, result.to_string());
+
+
+        let sc2 = ShardusCrypto::new("69fa4195670576c0160d660c3be36556ff8d504725be8a59b5a96509e0c994bc");
+
+        let result2 = sc2.hash(&"W2ytkSfPth".to_string().into_bytes(), Format::Hex);
+
+        let expected2 = "8a54cb24aa58b8b7ff2a13515884b6c5283cca0cfdd45bec6a58ba07282691df".to_string();
+
+        assert_eq!(expected2, result2.to_string());
     }
 
     #[test]

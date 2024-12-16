@@ -19,9 +19,14 @@ pub struct RpcResponse {
     pub jsonrpc: String,
     pub id: i32,
     pub result: Option<InjectedTxResp>,
-    pub error: Option<serde_json::Value>,
+    pub error: Option<RpcError>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RpcError{
+    pub code: i32,
+    pub message: String,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct InjectedTxResp{

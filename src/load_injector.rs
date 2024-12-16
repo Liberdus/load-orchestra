@@ -17,6 +17,12 @@ pub struct LiberdusIdentity{
 }
 
 pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &String, verbosity: &bool) {
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let log_file_path = format!("./artifacts/test_transfer_{}.txt", now.to_string());
     let shardus_crypto = crypto::ShardusCrypto::new("69fa4195670576c0160d660c3be36556ff8d504725be8a59b5a96509e0c994bc");
     let mut wallets = Vec::new();
     
@@ -24,23 +30,48 @@ pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Stri
     for _ in 0..*eoa {
         let signer = PrivateKeySigner::random();
         let tx = transactions::build_register_transaction(&shardus_crypto, &signer, &generate_random_string(10));
-        match transactions::inject_transaction(&transactions::LiberdusTransactions::Register(tx), &rpc_url_cloned.clone()).await {
+        let result = match transactions::inject_transaction(&transactions::LiberdusTransactions::Register(tx.clone()), &rpc_url_cloned.clone()).await {
             Ok(resp) => {
                 if resp.clone().result.is_none() || (resp.clone().result.unwrap().success == false) {
                     verbose(verbosity, &format!("Failed to register {:?}", signer.address()));
-                    continue;
                 }
-
-                verbose(verbosity, &format!("Registered {:?}, TxId {:?}", signer.address(), resp.clone().result.unwrap().txId));
-                wallets.push(signer);
+                else{
+                    verbose(verbosity, &format!("Registered {:?}, TxId {:?}", signer.address(), resp.clone().result.unwrap().txId));
+                    wallets.push(signer);
+                }
+                resp.clone()
             },
             Err(e) => {
                 verbose(verbosity, &format!("Failed to register {:?}", signer.address()));
+
+                rpc::RpcResponse {
+                    jsonrpc: "2.0".to_string(),
+                    id: 1,
+                    result: None,
+                    error: Some(rpc::RpcError{
+                        code: 0,
+                        message: e.to_string(),
+                    })
+                }
+
             }
-        }
+
+        };
+
+        let dump = serde_json::json!({
+            "tx": tx,
+            "result": result
+        });
+
+        let _ = append_json_to_file(&log_file_path, &dump);
     }
 
     println!("Registered {} successful wallets", wallets.len());
+
+    if wallets.len() < 2 {
+        println!("Couldn't register enough wallets to conduct test, shuting down...");
+        return;
+    }
 
     println!("Waiting for 30 seconds before injecting transactions");
 
@@ -109,23 +140,42 @@ pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Stri
         let from = tx.from.clone();
         let to = tx.to.clone();
         stats.total += 1;
-        match resp {
-            Ok(resp) => {
-                if resp.result.is_none() || (resp.result.unwrap().success == false) {
-                    stats.failed += 1;
+
+        let dump = serde_json::json!({
+            "tx": tx,
+            "result": match resp {
+                Ok(resp) => {
+                    let resp_cloned = resp.clone();
+                    if resp.result.is_none() || (resp.result.unwrap().success == false) {
+                        stats.failed += 1;
+                        verbose(verbosity, &format!("Transfer failed from {}, to {}", from, to));
+                    }
+                    else{
+                        verbose(verbosity, &format!("Transfer success from {}, to {}", from, to));
+                        stats.success += 1;
+                    }
+                    resp_cloned
+
+                },
+                Err(e) => {
                     verbose(verbosity, &format!("Transfer failed from {}, to {}", from, to));
-                    continue;
+                    stats.failed += 1;
+                    
+                    rpc::RpcResponse {
+                        jsonrpc: "2.0".to_string(),
+                        id: 1,
+                        result: None,
+                        error: Some(rpc::RpcError{
+                            code: 0,
+                            message: e.to_string(),
+                        })
+                    }
                 }
-
-                verbose(verbosity, &format!("Transfer success from {}, to {}", from, to));
-                stats.success += 1;
-            },
-            Err(e) => {
-                verbose(verbosity, &format!("Transfer failed from {}, to {}", from, to));
-                stats.failed += 1;
             }
-        }
 
+        });
+
+        let _ = append_json_to_file(&log_file_path, &dump);
         stdout_injection_stats(&stats, verbosity);
     }
 
@@ -168,11 +218,17 @@ pub async fn message(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Strin
 
     println!("Registered {} successful wallets", identities.len());
 
+    if identities.len() < 2  {
+        println!("Not Enough Wallets to conduct testing...., Killing Process");
+        return;
+    }
+
     println!("Waiting for 30 seconds before injecting friend transactions");
 
     tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
     println!("Injecting transactions");
+
 
     let duration = tokio::time::Duration::from_secs(*duration as u64);
     let start_time = tokio::time::Instant::now();
@@ -234,27 +290,54 @@ pub async fn message(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Strin
         failed: 0,
     };
 
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let log_file_path = format!("./artifacts/test_message_{}.txt", now.to_string());
+
     while let Some((tx, resp)) = receiver.recv().await {
         let from = tx.from.clone();
         let to = tx.to.clone();
         stats.total += 1;
-        match resp {
-            Ok(resp) => {
-                if resp.result.is_none() || (resp.result.unwrap().success == false) {
-                    stats.failed += 1;
+
+        let dump = serde_json::json!({
+            "tx": serde_json::to_value(&tx).expect(""),
+            "result": match resp {
+                Ok(resp) => {
+                    if resp.result.clone().is_none() || (resp.result.clone().unwrap().success == false) {
+                        stats.failed += 1;
+                        verbose(verbosity, &format!("Message failed from {}, to {}", from, to));
+                    }
+                    else{
+                        verbose(verbosity, &format!("Message success from {}, to {}", from, to));
+                        stats.success += 1;
+                    }
+
+
+                    resp
+                },
+                Err(e) => {
                     verbose(verbosity, &format!("Message failed from {}, to {}", from, to));
-                    continue;
+                    stats.failed += 1;
+
+                    rpc::RpcResponse {
+                        jsonrpc: "2.0".to_string(),
+                        id: 1,
+                        result: None,
+                        error: Some(rpc::RpcError{
+                            code: 0,
+                            message: e.to_string(),
+                        })
+                    }
                 }
-
-                verbose(verbosity, &format!("Message success from {}, to {}", from, to));
-                stats.success += 1;
-            },
-            Err(e) => {
-                verbose(verbosity, &format!("Message failed from {}, to {}", from, to));
-                stats.failed += 1;
             }
-        }
 
+
+        });
+
+        let _ = append_json_to_file(&log_file_path, &dump);
         stdout_injection_stats(&stats, verbosity);
     }
 
@@ -292,3 +375,24 @@ pub fn stdout_injection_stats(stats: &InjectionStats, verbosity: &bool) {
     std::io::stdout().flush().unwrap(); 
 }
 
+
+fn append_json_to_file(file_path: &str, json_value: &serde_json::Value) -> std::io::Result<()> {
+    let path = std::path::Path::new(file_path);
+
+    // Ensure the parent directories exist
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?; // Creates all directories in the path
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)   
+        .append(true)   
+        .open(file_path)?;
+
+    let mut writer = std::io::BufWriter::new(file);
+
+    let json_string = serde_json::to_string(json_value)?;
+
+    writeln!(writer, "{}", json_string)?;
+
+    Ok(())
+}

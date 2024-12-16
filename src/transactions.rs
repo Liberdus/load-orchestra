@@ -17,7 +17,7 @@ pub struct ShardusSignature {
     sig: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RegisterTransaction{
     pub aliasHash: String,
     pub from: String,
@@ -118,7 +118,7 @@ pub fn build_message_transaction(
         "timestamp": now,
     });
 
-    let signature = sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+    let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
 
     MessageTransaction {
         amount: ShardusBigIntSerialized {
@@ -155,7 +155,7 @@ pub fn build_friend_transaction(
         "timestamp": now,
     });
 
-    let signature = sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+    let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
 
     FriendTransaction {
         from: to_shardus_address(&from),
@@ -193,7 +193,7 @@ pub fn build_transfer_transaction(
         "timestamp": now,
     }); 
 
-    let signature = sign_transaction(shardus_crypto, from, &tx).expect("Failed to sign transaction");
+    let signature = eth_sign_transaction(shardus_crypto, from, &tx).expect("Failed to sign transaction");
 
     TransferTransaction {
         from: to_shardus_address(&address),
@@ -229,7 +229,7 @@ pub fn build_register_transaction(shardus_crypto: &crypto::ShardusCrypto, signer
     }); 
 
     
-    let signature = sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+    let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
 
     RegisterTransaction {
         aliasHash: alias_hash,
@@ -242,7 +242,7 @@ pub fn build_register_transaction(shardus_crypto: &crypto::ShardusCrypto, signer
     }
 }
 
-pub fn sign_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &LocalSigner<SigningKey>, tx: &serde_json::Value) -> Option<ShardusSignature> {
+pub fn eth_sign_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &LocalSigner<SigningKey>, tx: &serde_json::Value) -> Option<ShardusSignature> {
     let from_address = signer.address().to_string();
     let message = shardus_crypto.hash(&tx.to_string().into_bytes(), crypto::Format::Hex).to_string();
     let signature = signer.sign_message_sync(&message.clone().into_bytes()).expect("Failed to sign message");
