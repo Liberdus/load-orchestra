@@ -7,9 +7,11 @@ use serde::{Serialize, Deserialize};
 pub enum LiberdusTransactions {
     Register(RegisterTransaction),
     Transfer(TransferTransaction),
+    Friend(FriendTransaction),
+    Message(MessageTransaction),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ShardusSignature {
     owner: String,
     sig: String,
@@ -17,28 +19,53 @@ pub struct ShardusSignature {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RegisterTransaction{
-    aliasHash: String,
-    from: String,
+    pub aliasHash: String,
+    pub from: String,
     #[serde(rename = "type")]
-    transaction_type: String,
-    alias: String,
-    publicKey: String,
-    timestamp: u128,
-    sign: ShardusSignature,
+    pub transaction_type: String,
+    pub alias: String,
+    pub publicKey: String,
+    pub timestamp: u128,
+    pub sign: ShardusSignature,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FriendTransaction{
+    pub from: String,
+    pub to: String,
+    #[serde(rename = "type")]
+    pub transaction_type: String,
+    pub alias: String,
+    pub timestamp: u128,
+    pub sign: ShardusSignature,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MessageTransaction{
+    pub from: String,
+    pub to: String,
+    pub amount: ShardusBigIntSerialized,
+    #[serde(rename = "type")]
+    pub transaction_type: String,
+    pub chatId: String,
+    pub message: String,
+    pub timestamp: u128,
+    pub sign: ShardusSignature,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TransferTransaction {
-    from: String,
-    to: String,
-    amount: ShardusBigIntSerialized,
+    pub from: String,
+    pub to: String,
+    pub amount: ShardusBigIntSerialized,
     #[serde(rename = "type")]
-    transaction_type: String,
-    timestamp: u128,
-    sign: ShardusSignature,
+    pub transaction_type: String,
+    pub timestamp: u128,
+    pub sign: ShardusSignature,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ShardusBigIntSerialized {
     dataType: String,
     value: String,
@@ -57,6 +84,88 @@ fn to_shardus_address(addr: &String) -> String {
     }
 
     address.to_lowercase()
+}
+
+pub fn build_message_transaction(
+    shardus_crypto: &crypto::ShardusCrypto, 
+    signer: &LocalSigner<SigningKey>, 
+    to: &alloy::primitives::Address, 
+    message: &String
+) -> MessageTransaction {
+    let from = signer.address().to_string();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let chat_id = {
+        // lexically sort the two addresses, smaller address first
+        let mut joint_address: Vec<String> = Vec::new();
+        joint_address.push(from.clone());
+        joint_address.push(to.to_string().clone());
+        joint_address.sort();
+        shardus_crypto.hash(&joint_address.join("").into_bytes(), crypto::Format::Hex).to_string()
+    };
+    let tx = serde_json::json!({
+        "from": to_shardus_address(&from),
+        "amount": serde_json::json!({
+            "dataType": "bi",
+            "value": "1",
+        }),
+        "to": to_shardus_address(&to.to_string()),
+        "type": "message",
+        "chatId": chat_id,
+        "message": message,
+        "timestamp": now,
+    });
+
+    let signature = sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+
+    MessageTransaction {
+        amount: ShardusBigIntSerialized {
+            dataType: "bi".to_string(),
+            value: "1".to_string(),
+        },
+        from: to_shardus_address(&from),
+        to: to_shardus_address(&to.to_string()),
+        transaction_type: "message".to_string(),
+        chatId: chat_id,
+        message: message.clone(),
+        timestamp: now,
+        sign: signature,
+    }
+
+}
+
+pub fn build_friend_transaction(
+    shardus_crypto: &crypto::ShardusCrypto, 
+    signer: &LocalSigner<SigningKey>, 
+    to: &alloy::primitives::Address,
+    alias: &String
+) -> FriendTransaction {
+    let from = signer.address().to_string();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let tx = serde_json::json!({
+        "from": to_shardus_address(&from),
+        "to": to_shardus_address(&to.to_string()),
+        "type": "friend",
+        "alias": alias,
+        "timestamp": now,
+    });
+
+    let signature = sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+
+    FriendTransaction {
+        from: to_shardus_address(&from),
+        to: to_shardus_address(&to.to_string()),
+        transaction_type: "friend".to_string(),
+        alias: alias.clone(),
+        timestamp: now,
+        sign: signature,
+    }
+
 }
 
 
@@ -158,7 +267,7 @@ pub fn sign_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &LocalSi
     serialized_signature
 }
 
-pub async fn inject_transaction(tx: &LiberdusTransactions) -> Result<rpc::RpcResponse, reqwest::Error> {
+pub async fn inject_transaction(tx: &LiberdusTransactions, rpc_url: &String) -> Result<rpc::RpcResponse, reqwest::Error> {
 
     let json_tx = match tx {
         LiberdusTransactions::Register(r) => {
@@ -167,12 +276,18 @@ pub async fn inject_transaction(tx: &LiberdusTransactions) -> Result<rpc::RpcRes
         LiberdusTransactions::Transfer(t) => {
             serde_json::to_value(t).expect("Failed to serialize transaction")
         },
+        LiberdusTransactions::Friend(f) => {
+            serde_json::to_value(f).expect("Failed to serialize transaction")
+        },
+        LiberdusTransactions::Message(m) => {
+            serde_json::to_value(m).expect("Failed to serialize transaction")
+        },
     };  
 
     let req = rpc::build_send_transaction_payload(&serde_json::to_value(&json_tx).expect("Failed to serialize transaction"));
 
     let resp = match reqwest::Client::new()
-        .post("http://localhost:8545/")
+        .post(rpc_url)
         .json(&req)
         .send()
         .await {

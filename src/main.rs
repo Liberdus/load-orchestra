@@ -10,9 +10,9 @@ use tokio::runtime::Runtime;
 
 #[tokio::main]
 async fn main()  {
-    let matches = cli::get_commands().get_matches();
+    let args = cli::get_commands().get_matches();
 
-    cli::execute_command(&matches).await;
+    cli::execute_command(&args).await;
 
 }
 

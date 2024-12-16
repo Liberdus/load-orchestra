@@ -8,7 +8,7 @@ pub fn get_commands() -> Command  {
             --tx_type <TYPE> "Type of Transaction to test"
         )
         .required(true)
-        .value_parser([ "transfer", "register" ])
+        .value_parser([ "transfer", "register", "message" ]),
     )
     .arg(
         arg!(
@@ -38,6 +38,26 @@ pub fn get_commands() -> Command  {
         .value_parser(|s: &str| {
             s.parse::<usize>()
             .map_err(|_| format!("'{}' is not a valid number", s))
+        }),
+    )
+    .arg(
+        arg!(
+            --verbose <BOOL> "Std out verbosity, true, false"
+        )
+        .required(false)
+        .value_parser(|s: &str|{
+            s.parse::<bool>()
+            .map_err(|_| format!("'{}' is not a valid boolean", s))
+        }),
+    )
+    .arg(
+        arg!(
+            --rpc_url <STRING> "Url of the rpc, (default: http://localhost:8545)"
+        )
+        .required(false)
+        .value_parser(|s: &str| {
+            s.parse::<String>()
+            .map_err(|_| format!("'{}' is not a valid string", s))
         }),
     )
     .subcommand(
@@ -74,9 +94,22 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
         },
     };
 
+    let rpc_url = match matches.get_one::<String>("rpc_url") {
+        Some(rpc_url) => rpc_url,
+        None => &"http://localhost:8545".to_string(),
+    };
+
+    let verbosity = match matches.get_one::<bool>("verbose") {
+        Some(verbosity) => verbosity,
+        None => &false,
+    };
+
     match tx_type.as_str() {
         "transfer" => {
-            load_injector::transfer(tps, eoa, duration).await;
+            load_injector::transfer(tps, eoa, duration, rpc_url, verbosity).await;
+        },
+        "message" => {
+            load_injector::message(tps, eoa, duration, rpc_url, verbosity).await;
         },
         _ => {
             panic!("Invalid tx_type provided");
@@ -84,3 +117,9 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
     }
 }
 
+
+pub fn verbose(verbosity: &bool, message: &str) {
+    if *verbosity {
+        println!("{}", message);
+    }
+}
