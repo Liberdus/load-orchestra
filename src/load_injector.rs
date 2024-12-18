@@ -10,13 +10,32 @@ pub struct InjectionStats{
     pub failed: usize,
 }
 
+pub struct LoadInjectParams {
+    pub tx_type: String,
+    pub tps: usize,
+    pub duration: usize,
+    pub eoa: usize,
+    pub eoa_tps: usize,
+    pub rpc_url: String,
+    pub verbosity: bool,
+}
+
 #[derive(Clone)]
 pub struct LiberdusIdentity{
     pub alias: String,
     pub signer: PrivateKeySigner,
 }
 
-pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &String, verbosity: &bool) {
+pub async fn transfer(load_inject_params: LoadInjectParams) {
+    let LoadInjectParams {
+        tps,
+        duration,
+        eoa,
+        rpc_url,
+        verbosity,
+        eoa_tps,
+        ..
+    } = load_inject_params;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -27,7 +46,7 @@ pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Stri
     
     let rpc_url_cloned = rpc_url.clone();
 
-    let wallets = generate_register_wallets(&4, eoa, &rpc_url_cloned, shardus_crypto.clone()).await;
+    let wallets = generate_register_wallets(&eoa_tps, &eoa, &rpc_url_cloned, shardus_crypto.clone()).await;
 
     println!("Registered {} successful wallets", wallets.len());
 
@@ -42,9 +61,9 @@ pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Stri
 
     println!("Injecting transactions");
 
-    let duration = tokio::time::Duration::from_secs(*duration as u64);
+    let duration = tokio::time::Duration::from_secs(duration as u64);
     let start_time = tokio::time::Instant::now();
-    let interval = tokio::time::Duration::from_secs_f64(1.0 / *tps as f64);
+    let interval = tokio::time::Duration::from_secs_f64(1.0 / tps as f64);
     let mut interval_timer = tokio::time::interval(interval);
 
     let (transmitter, mut receiver) = tokio::sync::mpsc::unbounded_channel::<
@@ -111,17 +130,17 @@ pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Stri
                     let resp_cloned = resp.clone();
                     if resp.result.is_none() || (resp.result.unwrap().success == false) {
                         stats.failed += 1;
-                        verbose(verbosity, &format!("Transfer failed from {}, to {}", from, to));
+                        verbose(&verbosity, &format!("Transfer failed from {}, to {}", from, to));
                     }
                     else{
-                        verbose(verbosity, &format!("Transfer success from {}, to {}", from, to));
+                        verbose(&verbosity, &format!("Transfer success from {}, to {}", from, to));
                         stats.success += 1;
                     }
                     resp_cloned
 
                 },
                 Err(e) => {
-                    verbose(verbosity, &format!("Transfer failed from {}, to {}", from, to));
+                    verbose(&verbosity, &format!("Transfer failed from {}, to {}", from, to));
                     stats.failed += 1;
                     
                     rpc::RpcResponse {
@@ -139,7 +158,7 @@ pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Stri
         });
 
         let _ = append_json_to_file(&log_file_path, &dump);
-        stdout_injection_stats(&stats, verbosity);
+        stdout_injection_stats(&stats, &verbosity);
     }
 
     println!(
@@ -149,13 +168,22 @@ pub async fn transfer(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Stri
 
 }
 
-pub async fn message(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &String, verbosity: &bool) {
+pub async fn message(load_inject_params: LoadInjectParams) {
+    let LoadInjectParams {
+        tps,
+        duration,
+        eoa,
+        rpc_url,
+        verbosity,
+        eoa_tps,
+        ..
+    } = load_inject_params;
     let shardus_crypto = Arc::new(crypto::ShardusCrypto::new("69fa4195670576c0160d660c3be36556ff8d504725be8a59b5a96509e0c994bc"));
     
     let rpc_url_cloned = rpc_url.clone();
 
 
-    let wallets = generate_register_wallets(&4, eoa, &rpc_url_cloned, shardus_crypto.clone()).await;
+    let wallets = generate_register_wallets(&eoa_tps, &eoa, &rpc_url_cloned, shardus_crypto.clone()).await;
 
 
     println!("Registered {} successful wallets", wallets.len());
@@ -172,9 +200,9 @@ pub async fn message(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Strin
     println!("Injecting transactions");
 
 
-    let duration = tokio::time::Duration::from_secs(*duration as u64);
+    let duration = tokio::time::Duration::from_secs(duration as u64);
     let start_time = tokio::time::Instant::now();
-    let interval = tokio::time::Duration::from_secs_f64(1.0 / *tps as f64);
+    let interval = tokio::time::Duration::from_secs_f64(1.0 / tps as f64);
     let mut interval_timer = tokio::time::interval(interval);
 
 
@@ -250,10 +278,10 @@ pub async fn message(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Strin
                 Ok(resp) => {
                     if resp.result.clone().is_none() || (resp.result.clone().unwrap().success == false) {
                         stats.failed += 1;
-                        verbose(verbosity, &format!("Message failed from {}, to {}", from, to));
+                        verbose(&verbosity, &format!("Message failed from {}, to {}", from, to));
                     }
                     else{
-                        verbose(verbosity, &format!("Message success from {}, to {}", from, to));
+                        verbose(&verbosity, &format!("Message success from {}, to {}", from, to));
                         stats.success += 1;
                     }
 
@@ -261,7 +289,7 @@ pub async fn message(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Strin
                     resp
                 },
                 Err(e) => {
-                    verbose(verbosity, &format!("Message failed from {}, to {}", from, to));
+                    verbose(&verbosity, &format!("Message failed from {}, to {}", from, to));
                     stats.failed += 1;
 
                     rpc::RpcResponse {
@@ -280,7 +308,7 @@ pub async fn message(tps: &usize, eoa: &usize, duration: &usize, rpc_url: &Strin
         });
 
         let _ = append_json_to_file(&log_file_path, &dump);
-        stdout_injection_stats(&stats, verbosity);
+        stdout_injection_stats(&stats, &verbosity);
     }
 
     println!(

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use clap::{arg, command, value_parser, ArgAction, Command};
 use crate::load_injector;
 
+
 pub fn get_commands() -> Command  {
     command!() // requires `cargo` feature
     .arg(arg!(
@@ -24,6 +25,15 @@ pub fn get_commands() -> Command  {
     .arg(
         arg!(
             --eoa <NUMBER> "Number of address to create. (default: auto). When auto is used, it will be calculated based on the tps and duration"
+        ).required(false)
+        .value_parser(|s: &str| {
+            s.parse::<usize>()
+            .map_err(|_| format!("'{}' is not a valid number", s))
+        }),
+    )
+    .arg(
+        arg!(
+            --eoa_tps <NUMBER> "Tps for registering addresses (default: 4)"
         ).required(false)
         .value_parser(|s: &str| {
             s.parse::<usize>()
@@ -104,14 +114,27 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
         None => &false,
     };
 
-    println!("tx_type: {}, tps: {}, duration: {}, eoa: {}, rpc_url: {}, verbosity: {}", tx_type, tps, duration, eoa, rpc_url, verbosity);
+    let eoa_tps = match matches.get_one::<usize>("eoa_tps") {
+        Some(eoa_tps) => eoa_tps,
+        None => &4,
+    };
 
-    match tx_type.as_str() {
+    let args = load_injector::LoadInjectParams {
+        tx_type,
+        eoa_tps: *eoa_tps,
+        tps: *tps,
+        duration: *duration,
+        eoa: *eoa,
+        rpc_url: rpc_url.to_string(),
+        verbosity: *verbosity,
+    };
+
+    match args.tx_type.as_str() {
         "transfer" => {
-            load_injector::transfer(tps, eoa, duration, rpc_url, verbosity).await;
+            load_injector::transfer(args).await;
         },
         "message" => {
-            load_injector::message(tps, eoa, duration, rpc_url, verbosity).await;
+            load_injector::message(args).await;
         },
         _ => {
             panic!("Invalid tx_type provided");
