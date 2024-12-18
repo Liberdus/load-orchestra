@@ -90,7 +90,7 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
         None => {
             let total_tx = (tps * duration) as f64;
 
-            &((total_tx / 25.0).round() as usize)
+            &((total_tx / 2.0).round() as usize)
         },
     };
 
@@ -103,6 +103,8 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
         Some(verbosity) => verbosity,
         None => &false,
     };
+
+    println!("tx_type: {}, tps: {}, duration: {}, eoa: {}, rpc_url: {}, verbosity: {}", tx_type, tps, duration, eoa, rpc_url, verbosity);
 
     match tx_type.as_str() {
         "transfer" => {
