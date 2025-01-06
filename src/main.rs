@@ -3,9 +3,9 @@ mod transactions;
 mod rpc;
 mod cli;
 mod load_injector;
+mod proxy;
+mod utils;
 
-use alloy::signers::local::PrivateKeySigner;
-use tokio::runtime::Runtime;
 
 
 #[tokio::main]

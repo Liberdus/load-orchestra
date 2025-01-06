@@ -1,7 +1,5 @@
-use std::path::PathBuf;
-use clap::{arg, command, value_parser, ArgAction, Command};
+use clap::{Arg, ArgGroup, arg, command, ArgAction, Command};
 use crate::load_injector;
-
 
 pub fn get_commands() -> Command  {
     command!() // requires `cargo` feature
@@ -60,15 +58,32 @@ pub fn get_commands() -> Command  {
             .map_err(|_| format!("'{}' is not a valid boolean", s))
         }),
     )
+
+    .arg(
+        Arg::new("rpc")
+            .long("rpc")
+            .help("Use RPC server to inject transactions")
+            .action(clap::ArgAction::SetTrue)
+    )
+    .arg(
+        Arg::new("proxy")
+            .long("proxy")
+            .help("Use Proxy server to inject transactions")
+            .action(clap::ArgAction::SetTrue),
+    )
+    .group(
+        ArgGroup::new("gateway")
+            .args(&["rpc", "proxy"])
+            .required(false) // Ensure one of these is required
+    )
     .arg(
         arg!(
-            --rpc_url <STRING> "Url of the rpc, (default: http://localhost:8545)"
+            --gateway_url <URL> "Gateway URL to use. (default: http://0.0.0.0:8545 for rpc) Or (default: http://0.0.0.0:3030 for proxy server)"
         )
         .required(false)
         .value_parser(|s: &str| {
             s.parse::<String>()
-            .map_err(|_| format!("'{}' is not a valid string", s))
-        }),
+        })
     )
     .subcommand(
         Command::new("tui")
@@ -104,9 +119,22 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
         },
     };
 
-    let rpc_url = match matches.get_one::<String>("rpc_url") {
-        Some(rpc_url) => rpc_url,
-        None => &"http://localhost:8545".to_string(),
+    let gateway_type;
+    if matches.get_flag("proxy") {
+        gateway_type = load_injector::GatewayType::Proxy;
+
+    }else{
+        gateway_type = load_injector::GatewayType::Rpc;
+    }
+
+    let gateway_url = match matches.get_one::<String>("gateway_url") {
+        Some(url) => url,
+        None => { 
+            match gateway_type {
+                load_injector::GatewayType::Rpc => "http://0.0.0.0:8545",
+                load_injector::GatewayType::Proxy => "http://0.0.0.0:3030",
+            }
+        },
     };
 
     let verbosity = match matches.get_one::<bool>("verbose") {
@@ -119,15 +147,19 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
         None => &4,
     };
 
+
     let args = load_injector::LoadInjectParams {
         tx_type,
         eoa_tps: *eoa_tps,
         tps: *tps,
         duration: *duration,
         eoa: *eoa,
-        rpc_url: rpc_url.to_string(),
+        gateway_url: gateway_url.to_string(),
+        gateway_type,
         verbosity: *verbosity,
     };
+
+    println!("{:?}", args);
 
     match args.tx_type.as_str() {
         "transfer" => {

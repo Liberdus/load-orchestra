@@ -1,9 +1,16 @@
-use crate::{ crypto, transactions, rpc };
+use crate::{ cli, proxy, crypto, load_injector::GatewayType, rpc};
 use alloy::signers::{
-    k256::{ecdsa::SigningKey, Secp256k1}, local::LocalSigner, Error, SignerSync
+    k256::ecdsa::SigningKey, local::LocalSigner, SignerSync
 };
 use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct InjectedTxResp{
+    pub reason: String,
+    pub status: u32,
+    pub success: bool,
+    pub txId: Option<String>,
+}
 pub enum LiberdusTransactions {
     Register(RegisterTransaction),
     Transfer(TransferTransaction),
@@ -267,7 +274,7 @@ pub fn eth_sign_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &Loc
     serialized_signature
 }
 
-pub async fn inject_transaction(tx: &LiberdusTransactions, rpc_url: &String) -> Result<rpc::RpcResponse, reqwest::Error> {
+pub async fn inject_transaction(http_client: reqwest::Client, tx: &LiberdusTransactions, gateway_type: &GatewayType, gateway_url: &String, verbosity: &bool) -> Result<InjectedTxResp, Box<dyn std::error::Error>> {
 
     let json_tx = match tx {
         LiberdusTransactions::Register(r) => {
@@ -284,21 +291,70 @@ pub async fn inject_transaction(tx: &LiberdusTransactions, rpc_url: &String) -> 
         },
     };  
 
-    let req = rpc::build_send_transaction_payload(&serde_json::to_value(&json_tx).expect("Failed to serialize transaction"));
+    let (payload, full_url) = match gateway_type {
+        GatewayType::Rpc => {
+            let payload = rpc::build_send_transaction_payload(&json_tx);
+            let url = gateway_url;
 
-    let resp = match reqwest::Client::new()
-        .post(rpc_url)
-        .json(&req)
+            (payload, url)
+        },
+        GatewayType::Proxy => {
+            let payload = proxy::build_send_transaction_payload(&json_tx);
+
+            (payload, &format!("{}/inject", gateway_url))
+        },
+
+    };
+
+    cli::verbose(verbosity, &format!("tx http payload {}", payload));
+
+    let resp = match http_client
+        .post(full_url)
+        .json(&payload)
         .send()
         .await {
             Ok(resp) => {
-                resp.json::<rpc::RpcResponse>().await.expect("Failed to parse response")
+                resp
             },
             Err(e) => {
-                return Err(e);
+                return Err(e.into());
             },
         };
 
-    Ok(resp)
+    match gateway_type {
+        GatewayType::Rpc => {
+            match resp.json::<rpc::RpcResponse>().await {
+                Ok(resp) => {
+                    if resp.result.is_some() {
+                        return Ok(resp.result.expect("Couldn't extract result from rpc response"));
+                    }
+                    else if resp.error.is_some() {
+                        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, resp.error.expect("Couldn't extract error from rpc response").message)));
+                    }
+                    else{
+                        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "RPC internal Failure")));
+                    }
+                },
+                Err(e) => {
+                    return Err(e.into());
+                },
+            }
+            
+        },
+        GatewayType::Proxy => {
+            match resp.json::<proxy::ProxyInjectedTxResp>().await {
+                Ok(resp) => {
+                    if resp.result.is_some() && resp.error.is_none() {
+                        return Ok(resp.result.expect("Couldn't extract result from rpc response"));
+                    }else{
+                        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Tx Injection failed")));
+                    }
+                },
+                Err(e) => {
+                    return Err(e.into());
+                },
+            }
+        },
+    }
 
 }
