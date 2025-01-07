@@ -16,7 +16,6 @@ pub struct InjectedTxResp{
 pub enum LiberdusTransactions {
     Register(RegisterTransaction),
     Transfer(TransferTransaction),
-    Friend(FriendTransaction),
     Message(MessageTransaction),
     DepositStake(DepositStakeTransaction),
 }
@@ -159,6 +158,7 @@ pub fn build_message_transaction(
 
 }
 
+#[allow(dead_code)]
 pub fn build_friend_transaction(
     shardus_crypto: &crypto::ShardusCrypto, 
     signer: &LocalSigner<SigningKey>, 
@@ -336,9 +336,6 @@ pub async fn inject_transaction(http_client: reqwest::Client, tx: &LiberdusTrans
         },
         LiberdusTransactions::Transfer(t) => {
             serde_json::to_value(t).expect("Failed to serialize transaction")
-        },
-        LiberdusTransactions::Friend(f) => {
-            serde_json::to_value(f).expect("Failed to serialize transaction")
         },
         LiberdusTransactions::Message(m) => {
             serde_json::to_value(m).expect("Failed to serialize transaction")

@@ -1,5 +1,5 @@
 use clap::{Arg, ArgGroup, arg, command, ArgAction, Command};
-use crate::{ load_injector, utils, stake, monitor_server };
+use crate::{ load_injector, stake, monitor_server };
 
 
 pub fn get_commands() -> Command  {
@@ -24,9 +24,6 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
         },
         Some(("stake", sub_m)) => {
             execute_staking_subcommand(sub_m).await;
-        },
-        Some(("tui", sub_m)) => {
-            // execute_tui_subcommand(sub_m).await;
         },
         _ => {
             panic!("Invalid subcommand provided");
@@ -357,7 +354,6 @@ pub async fn execute_staking_subcommand(matches: &clap::ArgMatches) {
         rpc_url: rpc_url.to_string(),
         verbose: *verbosity,
         stake_amount: *amount,
-        monitor_url: monitor_url.to_string(),
     };
 
     let _ = stake::stake(nominees, &args).await;

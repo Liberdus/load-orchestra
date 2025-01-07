@@ -1,8 +1,8 @@
 use crate::{
-    cli, crypto, load_injector::{self, GatewayType}, monitor_server, transactions
+    cli, crypto, load_injector::{self, GatewayType}, transactions
 };
 use alloy::signers::{
-    k256::ecdsa::SigningKey, local::LocalSigner, SignerSync
+    k256::ecdsa::SigningKey, local::LocalSigner
 };
 use std::sync::Arc;
 use reqwest::Client;
@@ -12,12 +12,11 @@ pub struct StakingParams {
     pub rpc_url: String,
     pub verbose: bool,
     pub stake_amount: u128,
-    pub monitor_url: String,
-
 }
 
 #[allow(non_snake_case)]
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
 pub struct Nominee{
     pub id: String,
     pub ip: String,

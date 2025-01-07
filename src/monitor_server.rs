@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use reqwest;
 use std::collections::HashMap;
 
