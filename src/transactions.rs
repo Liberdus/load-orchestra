@@ -5,17 +5,31 @@ use alloy::signers::{
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[allow(non_snake_case)]
 pub struct InjectedTxResp{
     pub reason: String,
     pub status: u32,
     pub success: bool,
     pub txId: Option<String>,
 }
+
 pub enum LiberdusTransactions {
     Register(RegisterTransaction),
     Transfer(TransferTransaction),
     Friend(FriendTransaction),
     Message(MessageTransaction),
+    DepositStake(DepositStakeTransaction),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DepositStakeTransaction{
+    pub nominee: String,
+    pub stake: ShardusBigIntSerialized,
+    pub nominator: String,
+    #[serde(rename = "type")]
+    pub transaction_type: String,
+    pub timestamp: u128,
+    pub sign: ShardusSignature,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,6 +39,7 @@ pub struct ShardusSignature {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[allow(non_snake_case)]
 pub struct RegisterTransaction{
     pub aliasHash: String,
     pub from: String,
@@ -48,6 +63,7 @@ pub struct FriendTransaction{
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[allow(non_snake_case)]
 pub struct MessageTransaction{
     pub from: String,
     pub to: String,
@@ -71,7 +87,7 @@ pub struct TransferTransaction {
     pub sign: ShardusSignature,
 }
 
-
+#[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ShardusBigIntSerialized {
     dataType: String,
@@ -215,6 +231,44 @@ pub fn build_transfer_transaction(
     }
 }
 
+pub fn build_deposite_stake_transaction(
+    shardus_crypto: &crypto::ShardusCrypto, 
+    nominator: &LocalSigner<SigningKey>, 
+    nominee: &String, 
+    amount: u128
+) -> DepositStakeTransaction {
+    let nominator_address = nominator.address().to_string();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let tx = serde_json::json!({
+        "nominee": nominee,
+        "stake": serde_json::json!({
+            "dataType": "bi",
+            "value": format!("{:x}",amount),
+        }),
+        "nominator": to_shardus_address(&nominator_address),
+        "type": "deposit_stake",
+        "timestamp": now,
+    }); 
+
+    let signature = eth_sign_transaction(shardus_crypto, nominator, &tx).expect("Failed to sign transaction");
+
+    DepositStakeTransaction {
+        nominee: nominee.clone(),
+        stake: ShardusBigIntSerialized {
+            dataType: "bi".to_string(),
+            value: format!("{:x}", amount),
+        },
+        nominator: to_shardus_address(&nominator_address),
+        transaction_type: "deposit_stake".to_string(),
+        timestamp: now,
+        sign: signature,
+    }
+}
+
 
 pub fn build_register_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &LocalSigner<SigningKey>, alias: &String) -> RegisterTransaction {
     let address = signer.address().to_string();
@@ -288,6 +342,9 @@ pub async fn inject_transaction(http_client: reqwest::Client, tx: &LiberdusTrans
         },
         LiberdusTransactions::Message(m) => {
             serde_json::to_value(m).expect("Failed to serialize transaction")
+        },
+        LiberdusTransactions::DepositStake(d) => {
+            serde_json::to_value(d).expect("Failed to serialize transaction")
         },
     };  
 

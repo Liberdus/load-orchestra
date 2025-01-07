@@ -1,12 +1,136 @@
 use clap::{Arg, ArgGroup, arg, command, ArgAction, Command};
-use crate::load_injector;
+use crate::{ load_injector, utils, stake, monitor_server };
+
 
 pub fn get_commands() -> Command  {
     command!() // requires `cargo` feature
+    .subcommand(
+        loadtest_subcommand()
+    )
+    .subcommand(
+        staking_subcommand()
+    )
+    .subcommand(
+        Command::new("tui")
+            .about("Starts the TUI, (still in development)")
+            .arg(arg!(-l --list "lists test values").action(ArgAction::SetTrue)),
+    )
+}
+
+pub async fn execute_command(matches: &clap::ArgMatches) {
+    match matches.subcommand() {
+        Some(("sustain_load", sub_m)) => {
+            execute_loadtest_subcommand(sub_m).await;
+        },
+        Some(("stake", sub_m)) => {
+            execute_staking_subcommand(sub_m).await;
+        },
+        Some(("tui", sub_m)) => {
+            // execute_tui_subcommand(sub_m).await;
+        },
+        _ => {
+            panic!("Invalid subcommand provided");
+        }
+    }
+
+}
+
+
+pub fn verbose(verbosity: &bool, message: &str) {
+    if *verbosity {
+        println!("{}", message);
+    }
+}
+
+pub fn staking_subcommand() -> Command {
+        Command::new("stake")
+            .about("Staking nodes")
+            .arg(
+                arg!(
+                    --amount <NUMBER> "Staking amount (default: 10)"
+                ).required(false)
+                .value_parser(|s: &str| {
+                    s.parse::<u128>()
+                    .map_err(|_| format!("'{}' is not a valid number", s))
+                }),
+            )
+            .arg(
+                arg!(
+                    --joining "Stake all joining nodes"
+                )
+                .required(false)
+                .action(ArgAction::SetTrue),
+            )
+            .arg(
+                arg!(
+                    --active "Stake all active nodes"
+                )
+                .required(false)
+                .action(ArgAction::SetTrue),
+            )
+            .arg(
+                arg!(
+                    --file <PATH> "Stake all nodes in the nodelist file"
+                )
+                .required(false)
+                .value_parser(|s: &str| {
+                    s.parse::<String>()
+                    .map_err(|_| format!("'{}' is not a valid string", s))
+                }),
+            )
+            // .arg(
+            //     arg!(
+            //         --nominee <STRING> "Address of a particular node's account"
+            //     )
+            //     .required(false)
+            //     .value_parser(|s: &str| {
+            //         s.parse::<String>()
+            //         .map_err(|_| format!("'{}' is not a valid string", s))
+            //     }),
+            //
+            // )
+            .group(
+                ArgGroup::new("target")
+                    .args(&["joining", "active", "file"])
+                    .required(true) // Ensure one of these is required
+            )
+            .arg(
+                arg!(
+                    --verbose <BOOL> "Std out verbosity"
+                )
+                .required(false)
+                .action(ArgAction::SetTrue),
+            )
+            .arg(
+                arg!(
+                    --rpc_url <URL> "RPC URL to use. (default: http://0.0.0.0:8545)"
+                )
+                .required(false)
+                .value_parser(|s: &str| {
+                    s.parse::<String>()
+                })
+            )
+            .arg(
+                arg!(
+                    --monitor_url <URL> "Monitor URL to use. (default: http://0.0.0.0:3000)"
+                )
+                .required(false)
+                .value_parser(|s: &str| {
+                    s.parse::<String>()
+                })
+            )
+
+
+}
+
+
+pub fn loadtest_subcommand() -> Command {
+    Command::new("sustain_load")
+    .about("Inject Transactions for a duration")
     .arg(arg!(
             --tx_type <TYPE> "Type of Transaction to test"
         )
-        .required(true)
+        .required(false)
         .value_parser([ "transfer", "register", "message" ]),
     )
     .arg(
@@ -50,16 +174,12 @@ pub fn get_commands() -> Command  {
     )
     .arg(
         arg!(
-            --verbose <BOOL> "Std out verbosity, true, false"
+            --verbose <BOOL> "Std out verbosity"
         )
         .required(false)
-        .value_parser(|s: &str|{
-            s.parse::<bool>()
-            .map_err(|_| format!("'{}' is not a valid boolean", s))
-        }),
+        .action(ArgAction::SetTrue),
     )
-
-    .arg(
+.   arg(
         Arg::new("rpc")
             .long("rpc")
             .help("Use RPC server to inject transactions")
@@ -85,15 +205,10 @@ pub fn get_commands() -> Command  {
             s.parse::<String>()
         })
     )
-    .subcommand(
-        Command::new("tui")
-            .about("Starts the TUI, (still in development)")
-            .arg(arg!(-l --list "lists test values").action(ArgAction::SetTrue)),
-    )
 }
 
-pub async fn execute_command(matches: &clap::ArgMatches) {
 
+pub async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
     let tx_type = match matches.get_one::<String>("tx_type") {
         Some(tx_type) => tx_type.to_string(),
         None => panic!("No tx_type provided"),
@@ -174,9 +289,77 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
     }
 }
 
+pub async fn execute_staking_subcommand(matches: &clap::ArgMatches) {
+    let amount = match matches.get_one::<u128>("amount") {
+        Some(amount) => amount,
+        None => &10,
+    };
 
-pub fn verbose(verbosity: &bool, message: &str) {
-    if *verbosity {
-        println!("{}", message);
+    let joining = match matches.get_flag("joining") {
+        true => true,
+        false => false,
+    };
+
+    let active = match matches.get_flag("active") {
+        true => true,
+        false => false,
+    };
+
+    let mut nominees = match matches.get_one::<String>("file") {
+        Some(file) => {
+            match stake::load_nominee(file) {
+                Ok(nominees) => {
+                    let mut n = Vec::new();
+                    for nominee in nominees {
+                        n.push(nominee.publicKey);
+                    };
+                    n
+                },
+                Err(e) => {
+                    panic!("Failed to load nominees: {}", e);
+                }
+            }
+        },
+        None => { Vec::new() },
+    };
+
+    let verbosity = match matches.get_one::<bool>("verbose") {
+        Some(verbosity) => verbosity,
+        None => &false,
+    };
+
+    let monitor_url = match matches.get_one::<String>("monitor_url") {
+        Some(monitor_url) => monitor_url,
+        None => &"http://0.0.0.0:3000".to_string(),
+    };
+
+
+    let rpc_url = match matches.get_one::<String>("rpc_url") {
+        Some(rpc_url) => rpc_url,
+        None => &"http://0.0.0.0:8545".to_string(),
+    };
+
+    match (joining, active) {
+        (true, false) => {
+            let joining = monitor_server::collect_joining(monitor_url).await;
+            nominees.extend(joining);
+        },
+        (false, true) => {
+            let active = monitor_server::collect_active(monitor_url).await;
+            nominees.extend(active);
+        },
+        _ => {
+        }
     }
+
+
+    let args = stake::StakingParams {
+        rpc_url: rpc_url.to_string(),
+        verbose: *verbosity,
+        stake_amount: *amount,
+        monitor_url: monitor_url.to_string(),
+    };
+
+    let _ = stake::stake(nominees, &args).await;
+
 }

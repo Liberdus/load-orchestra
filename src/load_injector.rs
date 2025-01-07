@@ -325,7 +325,7 @@ pub async fn message(load_inject_params: LoadInjectParams) {
     );
 }
 
-async fn generate_register_wallets(tps: &usize, eoa: &usize, gateway_type: &GatewayType, gateway_url: &String, shardus_crypto: Arc<ShardusCrypto>, verbosity: &bool) -> Vec<PrivateKeySigner> {
+pub async fn generate_register_wallets(tps: &usize, eoa: &usize, gateway_type: &GatewayType, gateway_url: &String, shardus_crypto: Arc<ShardusCrypto>, verbosity: &bool) -> Vec<PrivateKeySigner> {
 
     let mut signers = Vec::new();
     let interval = tokio::time::Duration::from_secs_f64(1.0 / *tps as f64);

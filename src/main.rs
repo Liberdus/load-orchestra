@@ -5,6 +5,8 @@ mod cli;
 mod load_injector;
 mod proxy;
 mod utils;
+mod stake;
+mod monitor_server;
 
 
 
