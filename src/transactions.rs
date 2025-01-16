@@ -1,4 +1,4 @@
-use crate::{ cli, proxy, crypto, load_injector::GatewayType, rpc};
+use crate::{ cli, proxy, crypto, load_injector::GatewayType, rpc, utils};
 use alloy::signers::{
     k256::ecdsa::SigningKey, local::LocalSigner, SignerSync
 };
@@ -89,24 +89,10 @@ pub struct TransferTransaction {
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ShardusBigIntSerialized {
-    dataType: String,
-    value: String,
+    pub dataType: String,
+    pub value: String,
 }
 
-fn to_shardus_address(addr: &String) -> String {
-    // cut 0x if it has it
-    let mut address = addr.clone();
-    if address.starts_with("0x") {
-        address = address[2..].to_string();
-    }
-
-    // pad 00 until it become 64 characters
-    while address.len() < 64 {
-        address = format!("{}{}", address, "0");
-    }
-
-    address.to_lowercase()
-}
 
 pub fn build_message_transaction(
     shardus_crypto: &crypto::ShardusCrypto, 
@@ -128,12 +114,12 @@ pub fn build_message_transaction(
         shardus_crypto.hash(&joint_address.join("").into_bytes(), crypto::Format::Hex).to_string()
     };
     let tx = serde_json::json!({
-        "from": to_shardus_address(&from),
+        "from": utils::to_shardus_address(&from),
         "amount": serde_json::json!({
             "dataType": "bi",
             "value": "1",
         }),
-        "to": to_shardus_address(&to.to_string()),
+        "to": utils::to_shardus_address(&to.to_string()),
         "type": "message",
         "chatId": chat_id,
         "message": message,
@@ -147,8 +133,8 @@ pub fn build_message_transaction(
             dataType: "bi".to_string(),
             value: "1".to_string(),
         },
-        from: to_shardus_address(&from),
-        to: to_shardus_address(&to.to_string()),
+        from: utils::to_shardus_address(&from),
+        to: utils::to_shardus_address(&to.to_string()),
         transaction_type: "message".to_string(),
         chatId: chat_id,
         message: message.clone(),
@@ -171,8 +157,8 @@ pub fn build_friend_transaction(
         .unwrap()
         .as_millis();
     let tx = serde_json::json!({
-        "from": to_shardus_address(&from),
-        "to": to_shardus_address(&to.to_string()),
+        "from": utils::to_shardus_address(&from),
+        "to": utils::to_shardus_address(&to.to_string()),
         "type": "friend",
         "alias": alias,
         "timestamp": now,
@@ -181,8 +167,8 @@ pub fn build_friend_transaction(
     let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
 
     FriendTransaction {
-        from: to_shardus_address(&from),
-        to: to_shardus_address(&to.to_string()),
+        from: utils::to_shardus_address(&from),
+        to: utils::to_shardus_address(&to.to_string()),
         transaction_type: "friend".to_string(),
         alias: alias.clone(),
         timestamp: now,
@@ -206,8 +192,8 @@ pub fn build_transfer_transaction(
         .as_millis();
 
     let tx = serde_json::json!({
-        "from": to_shardus_address(&address),
-        "to": to_shardus_address(&to.to_string()),
+        "from": utils::to_shardus_address(&address),
+        "to": utils::to_shardus_address(&to.to_string()),
         "amount": serde_json::json!({
             "dataType": "bi",
             "value": format!("{:x}",amount),
@@ -219,8 +205,8 @@ pub fn build_transfer_transaction(
     let signature = eth_sign_transaction(shardus_crypto, from, &tx).expect("Failed to sign transaction");
 
     TransferTransaction {
-        from: to_shardus_address(&address),
-        to: to_shardus_address(&to.to_string()),
+        from: utils::to_shardus_address(&address),
+        to: utils::to_shardus_address(&to.to_string()),
         amount: ShardusBigIntSerialized {
             dataType: "bi".to_string(),
             value: format!("{:x}", amount),
@@ -249,7 +235,7 @@ pub fn build_deposite_stake_transaction(
             "dataType": "bi",
             "value": format!("{:x}",amount),
         }),
-        "nominator": to_shardus_address(&nominator_address),
+        "nominator": utils::to_shardus_address(&nominator_address),
         "type": "deposit_stake",
         "timestamp": now,
     }); 
@@ -262,7 +248,7 @@ pub fn build_deposite_stake_transaction(
             dataType: "bi".to_string(),
             value: format!("{:x}", amount),
         },
-        nominator: to_shardus_address(&nominator_address),
+        nominator: utils::to_shardus_address(&nominator_address),
         transaction_type: "deposit_stake".to_string(),
         timestamp: now,
         sign: signature,
@@ -282,7 +268,7 @@ pub fn build_register_transaction(shardus_crypto: &crypto::ShardusCrypto, signer
 
     let tx = serde_json::json!({
         "aliasHash": alias_hash,
-        "from": to_shardus_address(&address),
+        "from": utils::to_shardus_address(&address),
         "type": "register",
         "alias": &alias,
         "publicKey": uncompressed_public_key,
@@ -294,7 +280,7 @@ pub fn build_register_transaction(shardus_crypto: &crypto::ShardusCrypto, signer
 
     RegisterTransaction {
         aliasHash: alias_hash,
-        from: to_shardus_address(&address),
+        from: utils::to_shardus_address(&address),
         transaction_type: "register".to_string(),
         alias: alias.clone(),
         publicKey: uncompressed_public_key,
@@ -316,7 +302,7 @@ pub fn eth_sign_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &Loc
     let serialized_signature = match signature.to_k256() {
         Ok(k) => {
             Some( ShardusSignature {
-                owner: to_shardus_address(&from_address),
+                owner: utils::to_shardus_address(&from_address),
                 sig: format!("0x{}{}", k.to_string().to_lowercase(), parity_hex),
             })
         },
@@ -377,7 +363,7 @@ pub async fn inject_transaction(http_client: reqwest::Client, tx: &LiberdusTrans
 
     match gateway_type {
         GatewayType::Rpc => {
-            match resp.json::<rpc::RpcResponse>().await {
+            match resp.json::<rpc::RpcResponse<InjectedTxResp>>().await {
                 Ok(resp) => {
                     if resp.result.is_some() {
                         return Ok(resp.result.expect("Couldn't extract result from rpc response"));

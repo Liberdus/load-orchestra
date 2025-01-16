@@ -1,5 +1,5 @@
 use crate::{
-    cli, crypto, load_injector::{self, GatewayType}, transactions
+    cli, crypto, load_injector::{self, GatewayType}, transactions, rpc, utils
 };
 use alloy::signers::{
     k256::ecdsa::SigningKey, local::LocalSigner
@@ -98,11 +98,13 @@ pub async fn stake(
     tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
 
+    let mut green_staker = Vec::new();
     for nominee in nominees {
         let nominator = wallet.pop().unwrap();
         match stake_node(params, &nominee, &nominator, &crypto).await {
             Ok(_) => {
                 println!("Staked node: {} by {}", nominee, nominator.address());
+                green_staker.push(nominator);
             },
             Err(e) => {
                 eprintln!("Failed to stake node: {}", e);
@@ -110,6 +112,27 @@ pub async fn stake(
        }
     } 
 
+    // let client = Client::new();
+    // for staker in green_staker {
+    //     let addr = utils::to_shardus_address(&staker.address().to_string());
+    //     let payload = rpc::get_account(&addr);
+    //     let response = client.post(&params.rpc_url)
+    //         .json(&payload)
+    //         .send()
+    //         .await?
+    //         .json::<rpc::RpcResponse<serde_json::Value>>()
+    //         .await?;
+    //     let serialized_balance: transactions::ShardusBigIntSerialized = serde_json::from_value(
+    //         response.result.unwrap().get("balance").unwrap().clone()
+    //     ).unwrap();
+    //
+    //     let balance = serialized_balance.value.parse::<u128>().unwrap();
+    //
+    //     println!("Staker: {} has balance: {}, balance deducted: {} ", staker.address(), balance, ((50 - params.stake_amount) == balance));
+    //
+    // }
+
     Ok(())
+
 }
 

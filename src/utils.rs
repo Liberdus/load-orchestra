@@ -63,6 +63,21 @@ pub fn append_json_to_file(file_path: &str, json_value: &serde_json::Value) -> s
 }
 
 
+pub fn to_shardus_address(addr: &String) -> String {
+    // cut 0x if it has it
+    let mut address = addr.clone();
+    if address.starts_with("0x") {
+        address = address[2..].to_string();
+    }
+
+    // pad 00 until it become 64 characters
+    while address.len() < 64 {
+        address = format!("{}{}", address, "0");
+    }
+
+    address.to_lowercase()
+}
+
 /// check if it's a valid 32 byte hex string, 0x prefix is optional
 #[allow(dead_code)]
 pub fn is_valid_shardus_address(address: &str) -> bool {

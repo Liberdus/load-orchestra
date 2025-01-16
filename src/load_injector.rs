@@ -77,7 +77,7 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
     let gateway_url_long_live = gateway_url.clone();
     tokio::spawn(async move {
         // uses ARC internally
-        let http_client = reqwest::Client::new();
+        let http_client = reqwest::Client::builder().danger_accept_invalid_certs(true).build().unwrap();
 
         let long_live_transmitter = transmitter.clone();
 
@@ -232,7 +232,7 @@ pub async fn message(load_inject_params: LoadInjectParams) {
 
         let sc = Arc::clone(&shardus_crypto);
         let long_live_wallet = Arc::new(wallets).clone();
-        let http_client = reqwest::Client::new();
+        let http_client = reqwest::Client::builder().danger_accept_invalid_certs(true).build().unwrap();
         while start_time.elapsed() < duration {
             interval_timer.tick().await;
 
@@ -342,7 +342,7 @@ pub async fn generate_register_wallets(tps: &usize, eoa: &usize, gateway_type: &
     let verbosity = verbosity.clone();
     tokio::spawn(async move {
         let transmitter = transmitter.clone();
-        let http_client = reqwest::Client::new();
+        let http_client = reqwest::Client::builder().danger_accept_invalid_certs(true).build().unwrap();
         for _ in 0..eoa_moved {
             interval_timer.tick().await;
             let crypto = Arc::clone(&shardus_crypto);

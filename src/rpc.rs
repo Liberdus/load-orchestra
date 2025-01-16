@@ -1,6 +1,5 @@
 use serde_json;
 use serde::{Serialize, Deserialize};
-use crate::transactions;
 
 pub fn build_send_transaction_payload(tx: &serde_json::Value) -> serde_json::Value {
 
@@ -15,11 +14,24 @@ pub fn build_send_transaction_payload(tx: &serde_json::Value) -> serde_json::Val
 
 }
 
+pub fn get_account(account_id: &str) -> serde_json::Value {
+
+    let payload = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "lib_getAccount",
+        "params": [account_id],
+        "id": 1,
+    });
+
+    return payload;
+
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RpcResponse {
+pub struct RpcResponse<T> {
     pub jsonrpc: String,
     pub id: i32,
-    pub result: Option<transactions::InjectedTxResp>,
+    pub result: Option<T>,
     pub error: Option<RpcError>,
 }
 
