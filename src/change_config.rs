@@ -136,8 +136,8 @@ fn parse_dynamic_value(input: &str) -> Value {
         Value::Null
     }
     // Check for number
-    else if let Ok(number) = input.parse::<f64>() {
-        Value::Number(serde_json::Number::from_f64(number).unwrap())
+    else if let Ok(number) = input.parse::<u128>() {
+        Value::Number(serde_json::Number::from_u128(number).unwrap())
     }
     // Fallback to string
     else {
