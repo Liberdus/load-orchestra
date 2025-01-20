@@ -1,5 +1,6 @@
+use alloy::signers::local::PrivateKeySigner;
 use clap::{Arg, ArgGroup, arg, command, ArgAction, Command};
-use crate::{ load_injector, stake, monitor_server };
+use crate::{ change_config, load_injector::{self, GatewayType}, monitor_server, rpc, stake, transactions };
 
 
 pub fn get_commands() -> Command  {
@@ -9,6 +10,9 @@ pub fn get_commands() -> Command  {
     )
     .subcommand(
         staking_subcommand()
+    )
+    .subcommand(
+        change_config_subcommand()
     )
     .subcommand(
         Command::new("tui")
@@ -25,6 +29,9 @@ pub async fn execute_command(matches: &clap::ArgMatches) {
         Some(("stake", sub_m)) => {
             execute_staking_subcommand(sub_m).await;
         },
+        Some(("change_config", sub_m)) => {
+            execute_change_config_subcommand(sub_m).await;
+        },
         _ => {
             panic!("Invalid subcommand provided");
         }
@@ -37,6 +44,85 @@ pub fn verbose(verbosity: &bool, message: &str) {
     if *verbosity {
         println!("{}", message);
     }
+}
+
+pub fn change_config_subcommand() -> Command {
+    Command::new("change_config")
+        .about("Change the configuration of the network")
+        .arg(
+            arg!(
+                --rpc_url <URL> "RPC URL to use. (default: http://0.0.0.0:8545)"
+            )
+            .required(false)
+            .value_parser(|s: &str| {
+                s.parse::<String>()
+            })
+        )
+}
+
+pub async fn execute_change_config_subcommand(matches: &clap::ArgMatches) {
+    let rpc_url = match matches.get_one::<String>("rpc_url") {
+        Some(rpc_url) => rpc_url,
+        None => &"http://0.0.0.0:8545".to_string(),
+    };
+
+    let payload = rpc::get_nodelist();
+    let client = reqwest::Client::new();
+    let nodelist = client.post(rpc_url)
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to get nodelist")
+        .json::<rpc::RpcResponse<Vec<rpc::Consensor>>>()
+        .await
+        .expect("Failed to parse nodelist")
+        .result
+        .expect("Failed to get nodelist");
+
+    let node_url = format!("http://{}:{}/netconfig", nodelist[0].ip, nodelist[0].port);
+    let resp = reqwest::get(&node_url)
+        .await
+        .expect("Failed to get config")
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse config");
+
+
+    let change = match change_config::init(resp["config"].clone()) {
+        Ok(Some(v)) => {
+            println!("Config: {:?}", v);
+            serde_json::to_string(&v).expect("Failed to serialize")
+        },
+        Ok(None) => {
+            panic!("No config selected");
+        },
+        Err(e) => {
+            panic!("Failed to initialize config: {}", e);
+        }
+    };
+
+    println!("{:?}", change);
+
+    let shardus_crypto = crate::crypto::ShardusCrypto::new("69fa4195670576c0160d660c3be36556ff8d504725be8a59b5a96509e0c994bc");
+    let wallet = PrivateKeySigner::random();
+    let tx = transactions::build_change_config_transaction(&shardus_crypto, &wallet, -1, &change);
+
+    println!("Transaction: {:?}", tx);
+
+    let resp = match transactions::inject_transaction(
+        client, 
+        &transactions::LiberdusTransactions::ChangeConfig(tx), 
+        &GatewayType::Rpc, 
+        rpc_url, 
+    &false).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            panic!("Failed to inject transaction: {}", e);
+        }
+    };
+
+    println!("Response: {:?}", resp);
+
 }
 
 pub fn staking_subcommand() -> Command {
@@ -359,3 +445,4 @@ pub async fn execute_staking_subcommand(matches: &clap::ArgMatches) {
     let _ = stake::stake(nominees, &args).await;
 
 }
+

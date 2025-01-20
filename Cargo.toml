@@ -6,8 +6,10 @@ edition = "2021"
 [dependencies]
 alloy = { version = "0.8.0" , features = ["full"] }
 clap = { version = "4.5.23", features = ["cargo"] }
+crossterm = "0.28.1"
 poem = "3.1.5"
 rand = "0.8.5"
+ratatui = "0.29.0"
 reqwest = "0.12.9"
 serde = "1.0.215"
 serde_json = "1.0.133"

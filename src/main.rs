@@ -7,6 +7,7 @@ mod proxy;
 mod utils;
 mod stake;
 mod monitor_server;
+mod change_config;
 
 
 

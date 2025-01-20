@@ -18,6 +18,20 @@ pub enum LiberdusTransactions {
     Transfer(TransferTransaction),
     Message(MessageTransaction),
     DepositStake(DepositStakeTransaction),
+    ChangeConfig(ChangeConfigTransaction),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChangeConfigTransaction{
+    pub from: String,
+    pub cycle: i64,
+    pub config: String,
+    pub sign: ShardusSignature,
+
+    #[serde(rename = "type")]
+    pub transaction_type: String,
+
+    pub timestamp: u128,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -93,6 +107,38 @@ pub struct ShardusBigIntSerialized {
     pub value: String,
 }
 
+
+pub fn build_change_config_transaction(
+    shardus_crypto: &crypto::ShardusCrypto, 
+    signer: &LocalSigner<SigningKey>, 
+    cycle: i64, 
+    config: &String
+) -> ChangeConfigTransaction {
+    let from = signer.address().to_string();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let tx = serde_json::json!({
+        "from": utils::to_shardus_address(&from),
+        "cycle": cycle,
+        "type": "change_config".to_string(),
+        "config": config,
+        "timestamp": now,
+    });
+
+    let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+
+    ChangeConfigTransaction {
+        from: utils::to_shardus_address(&from),
+        cycle,
+        config: config.clone(),
+        transaction_type: "change_config".to_string(),
+        timestamp: now,
+        sign: signature,
+    }
+}
 
 pub fn build_message_transaction(
     shardus_crypto: &crypto::ShardusCrypto, 
@@ -328,6 +374,9 @@ pub async fn inject_transaction(http_client: reqwest::Client, tx: &LiberdusTrans
         },
         LiberdusTransactions::DepositStake(d) => {
             serde_json::to_value(d).expect("Failed to serialize transaction")
+        },
+        LiberdusTransactions::ChangeConfig(c) => {
+            serde_json::to_value(c).expect("Failed to serialize transaction")
         },
     };  
 
