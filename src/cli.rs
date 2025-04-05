@@ -66,7 +66,7 @@ pub async fn execute_change_config_subcommand(matches: &clap::ArgMatches) {
         None => &"http://0.0.0.0:8545".to_string(),
     };
 
-    let payload = rpc::get_nodelist();
+    let payload = rpc::build_get_nodelist_payload();
     let client = reqwest::Client::new();
     let nodelist = client.post(rpc_url)
         .json(&payload)

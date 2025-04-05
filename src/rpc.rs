@@ -27,12 +27,12 @@ pub fn build_send_transaction_payload(tx: &serde_json::Value) -> serde_json::Val
 
 }
 
-pub fn get_account(account_id: &str) -> serde_json::Value {
+pub fn build_get_account_payload(account_id: &str) -> serde_json::Value {
 
     let payload = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "lib_getAccount",
-        "params": [account_id],
+        "params": [account_id.clone()],
         "id": 1,
     });
 
@@ -40,7 +40,7 @@ pub fn get_account(account_id: &str) -> serde_json::Value {
 
 }
 
-pub fn get_nodelist() -> serde_json::Value {
+pub fn build_get_nodelist_payload() -> serde_json::Value {
 
     let payload = serde_json::json!({
         "jsonrpc": "2.0",
@@ -50,6 +50,25 @@ pub fn get_nodelist() -> serde_json::Value {
     });
 
     return payload;
+}
+
+pub async fn request(serde_json_payload: &serde_json::Value, url: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+
+    let client = reqwest::Client::new();
+    let res = client.post(url)
+        .json(&serde_json_payload)
+        .send().await;
+
+    match res {
+        Ok(res) => {
+            let body = res.text().await?;
+            let json: serde_json::Value = serde_json::from_str(&body)?;
+            return Ok(json);
+        },
+        Err(e) => {
+            return Err(Box::new(e));
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -65,6 +84,7 @@ pub struct RpcError{
     pub code: i32,
     pub message: String,
 }
+
 
 
 

@@ -1,5 +1,5 @@
 use alloy::signers::local::PrivateKeySigner;
-use crate::{ cli::verbose, crypto::{self, ShardusCrypto}, transactions, utils };
+use crate::{ rpc, cli::verbose, crypto::{self, ShardusCrypto}, transactions, utils };
 use std::sync::Arc;
 use rand::{self, Rng};
 
@@ -43,7 +43,7 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
     
     let gateway_url_cloned = gateway_url.clone();
 
-    let wallets = generate_register_wallets(
+    let mut wallets = generate_register_wallets(
         &eoa_tps, 
         &eoa, 
         &gateway_type,
@@ -52,16 +52,20 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
         &verbosity
     ).await;
 
-    println!("Registered {} successful wallets", wallets.len());
+
+    println!("Waiting for 30 seconds before injecting transactions");
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+
+    wallets = filter_failure_register(wallets, &gateway_url, gateway_type, &verbosity).await;
 
     if wallets.len() < 2 {
         println!("Couldn't register enough wallets to conduct test, shuting down...");
         return;
     }
 
-    println!("Waiting for 30 seconds before injecting transactions");
+    println!("Registered {} successful wallets", wallets.len());
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
     println!("Injecting transactions");
 
@@ -391,4 +395,58 @@ pub async fn generate_register_wallets(tps: &usize, eoa: &usize, gateway_type: &
     }
 
     signers
+}
+
+
+async fn filter_failure_register(wallets:  Vec<PrivateKeySigner>, gateway_url: &str, gateway_type: GatewayType, verbosity: &bool) -> Vec<PrivateKeySigner> {
+
+    println!("Validating Registered Wallets...");
+
+    let mut filtered_wallets = vec![];
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PrivateKeySigner>();
+
+    for wallet in wallets.iter() {
+        let wallet = wallet.clone();
+        let transmitter = tx.clone();
+        let gateway_url_long_live = gateway_url.to_string();
+
+        tokio::spawn(async move {
+            let addr = utils::to_shardus_address(&wallet.address().to_string());
+            let payload = rpc::build_get_account_payload(&addr);
+            let resp = rpc::request(&payload, &gateway_url_long_live).await;
+            
+            match resp {
+                Ok(resp) => {
+                    let json: rpc::RpcResponse<serde_json::Value> = serde_json::from_value(resp).expect("Failed to rpc parse response");
+
+                    // println!("{:?}", json);
+
+                    if json.result.is_some() && json.error.is_none() {
+                        transmitter.send(wallet).unwrap();
+                    }
+                },
+                Err(e) => {
+                    // eprintln!("Error: {}", e);
+                }
+            };
+
+            drop(transmitter);
+        });
+    }
+
+    drop(tx);
+
+    while let Some(wallet) = rx.recv().await {
+        verbose(
+            &verbosity, 
+            format!("Successful Register {}", 
+                utils::to_shardus_address(
+                    &wallet.address().to_string())
+                ).as_str());
+        filtered_wallets.push(wallet);
+    }
+
+    filtered_wallets
+
 }
