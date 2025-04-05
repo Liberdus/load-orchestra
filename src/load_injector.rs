@@ -1,5 +1,5 @@
 use alloy::signers::local::PrivateKeySigner;
-use crate::{ rpc, cli::verbose, crypto::{self, ShardusCrypto}, transactions, utils };
+use crate::{ cli::verbose, crypto::{self, ShardusCrypto}, proxy, rpc, transactions::{self, InjectedTxResp}, utils };
 use std::sync::Arc;
 use rand::{self, Rng};
 
@@ -57,7 +57,7 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
 
     tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
-    wallets = filter_failure_register(wallets, &gateway_url, gateway_type, &verbosity).await;
+    wallets = validate_filter_failed_register(wallets, &gateway_url, &verbosity).await;
 
     if wallets.len() < 2 {
         println!("Couldn't register enough wallets to conduct test, shuting down...");
@@ -195,14 +195,21 @@ pub async fn message(load_inject_params: LoadInjectParams) {
     let gateway_url_cloned = gateway_url.clone();
 
 
-    let wallets = generate_register_wallets(
-        &eoa_tps, 
-        &eoa, 
-        &gateway_type,
-        &gateway_url_cloned, 
-        Arc::clone(&shardus_crypto),
-        &verbosity
-    ).await;
+    let wallets =  { 
+        let mut w = generate_register_wallets(
+            &eoa_tps, 
+            &eoa, 
+            &gateway_type,
+            &gateway_url_cloned, 
+            Arc::clone(&shardus_crypto),
+            &verbosity
+        ).await;
+        println!("Waiting for 30 seconds before injecting Message transactions");
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        w = validate_filter_failed_register(w, &gateway_url, &verbosity).await;
+        w
+    };
 
 
     println!("Registered {} successful wallets", wallets.len());
@@ -212,9 +219,6 @@ pub async fn message(load_inject_params: LoadInjectParams) {
         return;
     }
 
-    println!("Waiting for 30 seconds before injecting Message transactions");
-
-    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
     println!("Injecting transactions");
 
@@ -403,9 +407,12 @@ pub async fn generate_register_wallets(tps: &usize, eoa: &usize, gateway_type: &
 }
 
 
-async fn filter_failure_register(wallets:  Vec<PrivateKeySigner>, gateway_url: &str, gateway_type: GatewayType, verbosity: &bool) -> Vec<PrivateKeySigner> {
+async fn validate_filter_failed_register(wallets:  Vec<PrivateKeySigner>, gateway_url: &str, verbosity: &bool) -> Vec<PrivateKeySigner> {
 
-    println!("Validating Registered Wallets...");
+    verbose(
+        &verbosity, 
+        format!("Filtering wallets that failed to register").as_str()
+    );
 
     let mut filtered_wallets = vec![];
 
@@ -418,16 +425,14 @@ async fn filter_failure_register(wallets:  Vec<PrivateKeySigner>, gateway_url: &
 
         tokio::spawn(async move {
             let addr = utils::to_shardus_address(&wallet.address().to_string());
-            let payload = rpc::build_get_account_payload(&addr);
-            let resp = rpc::request(&payload, &gateway_url_long_live).await;
+            let url = format!("{}/account/{}", &gateway_url_long_live, addr);
+            let resp = proxy::request(None, &url).await;
             
             match resp {
                 Ok(resp) => {
-                    let json: rpc::RpcResponse<serde_json::Value> = serde_json::from_value(resp).expect("Failed to rpc parse response");
+                    let json: proxy::GetAccountResp = serde_json::from_value(resp).expect("Failed to parse gateway response");
 
-                    // println!("{:?}", json);
-
-                    if json.result.is_some() && json.error.is_none() {
+                    if json.account.is_some() {
                         transmitter.send(wallet).unwrap();
                     }
                 },
