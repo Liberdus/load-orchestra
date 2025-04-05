@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
@@ -21,18 +20,18 @@ pub fn build_send_transaction_payload(tx: &serde_json::Value) -> serde_json::Val
         "id": 1,
     });
 
-    return payload;
+    payload
 }
 
 pub fn build_get_account_payload(account_id: &str) -> serde_json::Value {
     let payload = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "lib_getAccount",
-        "params": [account_id.clone()],
+        "params": [account_id],
         "id": 1,
     });
 
-    return payload;
+    payload
 }
 
 pub fn build_get_nodelist_payload() -> serde_json::Value {
@@ -43,7 +42,7 @@ pub fn build_get_nodelist_payload() -> serde_json::Value {
         "id": 1,
     });
 
-    return payload;
+    payload
 }
 
 pub async fn request(
@@ -57,10 +56,10 @@ pub async fn request(
         Ok(res) => {
             let body = res.text().await?;
             let json: serde_json::Value = serde_json::from_str(&body)?;
-            return Ok(json);
+            Ok(json)
         }
         Err(e) => {
-            return Err(Box::new(e));
+            Err(Box::new(e))
         }
     }
 }

@@ -157,12 +157,12 @@ pub fn build_message_transaction(
         let from_address = utils::to_shardus_address(&from);
         let to = utils::to_shardus_address(&to.to_string());
 
-        let mut addresses = vec![from_address, to];
+        let mut addresses = [from_address, to];
         addresses.sort();
-        let chat_id = shardus_crypto
+        
+        shardus_crypto
             .hash(&addresses.join("").into_bytes(), crypto::Format::Hex)
-            .to_string();
-        chat_id
+            .to_string()
     };
     let tx = serde_json::json!({
         "from": utils::to_shardus_address(&from),
@@ -245,12 +245,12 @@ pub fn build_transfer_transaction(
         let from_address = utils::to_shardus_address(&address);
         let to = utils::to_shardus_address(&to.to_string());
 
-        let mut addresses = vec![from_address, to];
+        let mut addresses = [from_address, to];
         addresses.sort();
-        let chat_id = shardus_crypto
+        
+        shardus_crypto
             .hash(&addresses.join("").into_bytes(), crypto::Format::Hex)
-            .to_string();
-        chat_id
+            .to_string()
     };
 
     let tx = serde_json::json!({
@@ -384,15 +384,15 @@ pub fn eth_sign_transaction(
         true => "1c",
     };
 
-    let serialized_signature = match signature.to_k256() {
+    
+
+    match signature.to_k256() {
         Ok(k) => Some(ShardusSignature {
             owner: utils::to_shardus_address(&from_address),
             sig: format!("0x{}{}", k.to_string().to_lowercase(), parity_hex),
         }),
         Err(_e) => None,
-    };
-
-    serialized_signature
+    }
 }
 
 pub async fn inject_transaction(
@@ -437,18 +437,18 @@ pub async fn inject_transaction(
     match resp.json::<proxy::ProxyInjectedTxResp>().await {
         Ok(resp) => {
             if resp.result.is_some() && resp.error.is_none() {
-                return Ok(resp
+                Ok(resp
                     .result
-                    .expect("Couldn't extract result from rpc response"));
+                    .expect("Couldn't extract result from rpc response"))
             } else {
-                return Err(Box::new(std::io::Error::new(
+                Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "Tx Injection failed",
-                )));
+                )))
             }
         }
         Err(e) => {
-            return Err(e.into());
+            Err(e.into())
         }
     }
 }

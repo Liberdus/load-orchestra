@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-use reqwest;
 use std::collections::HashMap;
 
 #[allow(non_snake_case)]

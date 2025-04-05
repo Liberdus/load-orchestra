@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use core::fmt;
-use sodiumoxide;
 
 type HexString = String;
 type Buffer = Vec<u8>;

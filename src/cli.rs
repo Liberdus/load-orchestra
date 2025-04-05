@@ -171,7 +171,7 @@ pub fn staking_subcommand() -> Command {
         // )
         .group(
             ArgGroup::new("target")
-                .args(&["joining", "active", "file"])
+                .args(["joining", "active", "file"])
                 .required(true), // Ensure one of these is required
         )
         .arg(
@@ -269,15 +269,9 @@ pub async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
         None => panic!("No tx_type provided"),
     };
 
-    let tps = match matches.get_one::<usize>("tps") {
-        Some(tps) => tps,
-        None => &1,
-    };
+    let tps = matches.get_one::<usize>("tps").unwrap_or(&1);
 
-    let duration = match matches.get_one::<usize>("duration") {
-        Some(duration) => duration,
-        None => &60,
-    };
+    let duration = matches.get_one::<usize>("duration").unwrap_or(&60);
 
     let eoa = match matches.get_one::<usize>("eoa") {
         Some(eoa) => eoa,
@@ -293,15 +287,9 @@ pub async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
         None => "http://0.0.0.0:3030",
     };
 
-    let verbosity = match matches.get_one::<bool>("verbose") {
-        Some(verbosity) => verbosity,
-        None => &false,
-    };
+    let verbosity = matches.get_one::<bool>("verbose").unwrap_or(&false);
 
-    let eoa_tps = match matches.get_one::<usize>("eoa_tps") {
-        Some(eoa_tps) => eoa_tps,
-        None => &4,
-    };
+    let eoa_tps = matches.get_one::<usize>("eoa_tps").unwrap_or(&4);
 
     let args = load_injector::LoadInjectParams {
         tx_type,
@@ -329,20 +317,11 @@ pub async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
 }
 
 pub async fn execute_staking_subcommand(matches: &clap::ArgMatches) {
-    let amount = match matches.get_one::<u128>("amount") {
-        Some(amount) => amount,
-        None => &10,
-    };
+    let amount = matches.get_one::<u128>("amount").unwrap_or(&10);
 
-    let joining = match matches.get_flag("joining") {
-        true => true,
-        false => false,
-    };
+    let joining = matches.get_flag("joining");
 
-    let active = match matches.get_flag("active") {
-        true => true,
-        false => false,
-    };
+    let active = matches.get_flag("active");
 
     let mut nominees = match matches.get_one::<String>("file") {
         Some(file) => match stake::load_nominee(file) {
@@ -360,10 +339,7 @@ pub async fn execute_staking_subcommand(matches: &clap::ArgMatches) {
         None => Vec::new(),
     };
 
-    let verbosity = match matches.get_one::<bool>("verbose") {
-        Some(verbosity) => verbosity,
-        None => &false,
-    };
+    let verbosity = matches.get_one::<bool>("verbose").unwrap_or(&false);
 
     let monitor_url = match matches.get_one::<String>("monitor_url") {
         Some(monitor_url) => monitor_url,

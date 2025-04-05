@@ -1,5 +1,4 @@
 use crate::transactions;
-use serde_json;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct GetAccountResp {
@@ -11,7 +10,7 @@ pub fn build_send_transaction_payload(tx: &serde_json::Value) -> serde_json::Val
         "tx": tx.to_string(),
     });
 
-    return payload;
+    payload
 }
 
 pub async fn request(
@@ -29,10 +28,10 @@ pub async fn request(
         Ok(res) => {
             let body = res.text().await?;
             let json: serde_json::Value = serde_json::from_str(&body)?;
-            return Ok(json);
+            Ok(json)
         }
         Err(e) => {
-            return Err(Box::new(e));
+            Err(Box::new(e))
         }
     }
 }

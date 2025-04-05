@@ -110,7 +110,7 @@ fn ratatui_prompt<B: Backend>(
                         input.pop();
                     }
                     KeyCode::Enter => {
-                        let v = parse_dynamic_value(&input.trim());
+                        let v = parse_dynamic_value(input.trim());
 
                         return Ok(v);
                     }
@@ -354,7 +354,7 @@ pub fn init(json: Value) -> Result<Option<Value>, Box<dyn Error>> {
                                 if new_value.is_null() {
                                     continue;
                                 }
-                                let new_json = create_change_object(&path, new_value);
+                                let new_json = create_change_object(path, new_value);
                                 disable_raw_mode()?;
                                 clear_screen();
                                 return Ok(Some(new_json));
