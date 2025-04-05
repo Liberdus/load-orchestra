@@ -301,7 +301,12 @@ pub async fn message(load_inject_params: LoadInjectParams) {
             "tx": serde_json::to_value(&tx).expect(""),
             "result": match resp {
                 Ok(resp) => {
-                    stats.success += 1;
+                    if resp.success {
+                        stats.success += 1;
+                    }
+                    else {
+                        stats.failed += 1;
+                    };
                     resp
                 },
                 Err(e_str) => {

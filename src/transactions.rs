@@ -153,11 +153,13 @@ pub fn build_message_transaction(
         .as_millis();
     let chat_id = {
         // lexically sort the two addresses, smaller address first
-        let mut joint_address: Vec<String> = Vec::new();
-        joint_address.push(from.clone());
-        joint_address.push(to.to_string().clone());
-        joint_address.sort();
-        shardus_crypto.hash(&joint_address.join("").into_bytes(), crypto::Format::Hex).to_string()
+        let from_address = utils::to_shardus_address(&from);
+        let to = utils::to_shardus_address(&to.to_string());
+
+        let mut addresses = vec![from_address, to];
+        addresses.sort();
+        let chat_id = shardus_crypto.hash(&addresses.join("").into_bytes(), crypto::Format::Hex).to_string();
+        chat_id
     };
     let tx = serde_json::json!({
         "from": utils::to_shardus_address(&from),
