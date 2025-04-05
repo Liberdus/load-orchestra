@@ -183,7 +183,7 @@ pub fn staking_subcommand() -> Command {
         )
         .arg(
             arg!(
-                --rpc_url <URL> "RPC URL to use. (default: http://0.0.0.0:8545)"
+                --gateway_url <URL> "Gateway URL to use. (default: http://0.0.0.0:3030)"
             )
             .required(false)
             .value_parser(|s: &str| s.parse::<String>()),
