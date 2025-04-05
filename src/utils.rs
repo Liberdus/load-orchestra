@@ -1,5 +1,5 @@
-use std::io::Write;
 use rand::{self, Rng};
+use std::io::Write;
 
 pub fn generate_random_string(length: usize) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -14,7 +14,7 @@ pub fn generate_random_string(length: usize) -> String {
         .collect()
 }
 
-pub struct InjectionStats{
+pub struct InjectionStats {
     pub total: usize,
     pub success: usize,
     pub failed: usize,
@@ -29,7 +29,7 @@ pub fn stdout_injection_stats(stats: &InjectionStats, verbosity: &bool) {
         "\rTotal: {:<10} Success: {:<10} Failed: {:<10} Failure: {:<10.2}%",
         stats.total, stats.success, stats.failed, failure_rates
     );
-    std::io::stdout().flush().unwrap(); 
+    std::io::stdout().flush().unwrap();
 }
 
 pub fn stdout_register_progress(max: usize, progress: usize) {
@@ -38,7 +38,7 @@ pub fn stdout_register_progress(max: usize, progress: usize) {
         "\rRegistering {:?} / {:?} Wallets. ({:<.2}%)",
         progress, max, percentage
     );
-    std::io::stdout().flush().unwrap(); 
+    std::io::stdout().flush().unwrap();
 }
 
 pub fn append_json_to_file(file_path: &str, json_value: &serde_json::Value) -> std::io::Result<()> {
@@ -49,8 +49,8 @@ pub fn append_json_to_file(file_path: &str, json_value: &serde_json::Value) -> s
         std::fs::create_dir_all(parent)?; // Creates all directories in the path
     }
     let file = std::fs::OpenOptions::new()
-        .create(true)   
-        .append(true)   
+        .create(true)
+        .append(true)
         .open(file_path)?;
 
     let mut writer = std::io::BufWriter::new(file);
@@ -61,7 +61,6 @@ pub fn append_json_to_file(file_path: &str, json_value: &serde_json::Value) -> s
 
     Ok(())
 }
-
 
 pub fn to_shardus_address(addr: &String) -> String {
     // cut 0x if it has it

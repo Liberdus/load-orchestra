@@ -93,9 +93,7 @@ fn ratatui_prompt<B: Backend>(
     loop {
         terminal.draw(|f| {
             let size = f.area();
-            let block = Block::default()
-                .title("Input Prompt")
-                .borders(Borders::ALL);
+            let block = Block::default().title("Input Prompt").borders(Borders::ALL);
 
             let prompt = Paragraph::new(format!("{}\n> {}", prompt_message, input))
                 .block(block)
@@ -131,8 +129,7 @@ fn parse_dynamic_value(input: &str) -> Value {
         Value::Bool(true)
     } else if input.eq_ignore_ascii_case("false") {
         Value::Bool(false)
-    }
-    else if input.eq_ignore_ascii_case("null") {
+    } else if input.eq_ignore_ascii_case("null") {
         Value::Null
     }
     // Check for number
@@ -189,7 +186,11 @@ fn render_json<'a>(
                         " ".repeat(indent),
                         prefix,
                         key,
-                        if is_leaf { val.to_string() } else { "".to_string() }
+                        if is_leaf {
+                            val.to_string()
+                        } else {
+                            "".to_string()
+                        }
                     ),
                     new_path.clone(),
                     is_leaf,
@@ -240,7 +241,11 @@ fn render_json<'a>(
                         " ".repeat(indent),
                         prefix,
                         i,
-                        if is_leaf { val.to_string() } else { "".to_string() }
+                        if is_leaf {
+                            val.to_string()
+                        } else {
+                            "".to_string()
+                        }
                     ),
                     new_path.clone(),
                     is_leaf,
@@ -285,13 +290,18 @@ pub fn init(json: Value) -> Result<Option<Value>, Box<dyn Error>> {
                 .split(f.size());
 
             let mut index_counter = 0;
-            let json_lines = render_json(&json, 0, &mut state.expanded_nodes, true, &mut index_counter, vec![]);
+            let json_lines = render_json(
+                &json,
+                0,
+                &mut state.expanded_nodes,
+                true,
+                &mut index_counter,
+                vec![],
+            );
 
             let terminal_height = f.size().height as usize;
-            let visible_lines = &json_lines[state.scroll_offset..std::cmp::min(
-                state.scroll_offset + terminal_height,
-                json_lines.len(),
-            )];
+            let visible_lines = &json_lines[state.scroll_offset
+                ..std::cmp::min(state.scroll_offset + terminal_height, json_lines.len())];
 
             let items: Vec<ListItem> = visible_lines
                 .iter()
@@ -306,15 +316,25 @@ pub fn init(json: Value) -> Result<Option<Value>, Box<dyn Error>> {
                     ListItem::new(line.clone()).style(style)
                 })
                 .collect();
-            let list = List::new(items)
-                .block(Block::default().borders(Borders::ALL).title("Node Settings"));
+            let list = List::new(items).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Node Settings"),
+            );
             f.render_widget(list, chunks[0]);
         })?;
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 let mut index_counter = 0;
-                let json_lines = render_json(&json, 0, &mut state.expanded_nodes, true, &mut index_counter, vec![]);
+                let json_lines = render_json(
+                    &json,
+                    0,
+                    &mut state.expanded_nodes,
+                    true,
+                    &mut index_counter,
+                    vec![],
+                );
 
                 match key.code {
                     KeyCode::Up => state.move_up(),
@@ -323,9 +343,14 @@ pub fn init(json: Value) -> Result<Option<Value>, Box<dyn Error>> {
                         terminal.size()?.height as usize,
                     ),
                     KeyCode::Enter => {
-                        if let Some((_, path, is_leaf, value)) = json_lines.get(state.selected_index) {
+                        if let Some((_, path, is_leaf, value)) =
+                            json_lines.get(state.selected_index)
+                        {
                             if *is_leaf {
-                                let new_value = ratatui_prompt(&mut terminal, &format!("Enter new value for {}:", path.join("->")))?;
+                                let new_value = ratatui_prompt(
+                                    &mut terminal,
+                                    &format!("Enter new value for {}:", path.join("->")),
+                                )?;
                                 if new_value.is_null() {
                                     continue;
                                 }

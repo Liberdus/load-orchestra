@@ -1,14 +1,19 @@
+use crate::{
+    cli::verbose,
+    crypto::{self, ShardusCrypto},
+    proxy, rpc,
+    transactions::{self, InjectedTxResp},
+    utils,
+};
 use alloy::signers::local::PrivateKeySigner;
-use crate::{ cli::verbose, crypto::{self, ShardusCrypto}, proxy, rpc, transactions::{self, InjectedTxResp}, utils };
-use std::sync::Arc;
 use rand::{self, Rng};
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
 pub enum GatewayType {
     Rpc,
     Proxy,
 }
-
 
 #[derive(Debug)]
 pub struct LoadInjectParams {
@@ -18,7 +23,6 @@ pub struct LoadInjectParams {
     pub eoa: usize,
     pub eoa_tps: usize,
     pub gateway_url: String,
-    pub gateway_type: GatewayType,
     pub verbosity: bool,
 }
 
@@ -28,7 +32,6 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
         duration,
         eoa,
         gateway_url,
-        gateway_type,
         verbosity,
         eoa_tps,
         ..
@@ -39,19 +42,20 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
         .unwrap()
         .as_millis();
     let log_file_path = format!("./artifacts/test_transfer_{}.txt", now.to_string());
-    let shardus_crypto = Arc::new(crypto::ShardusCrypto::new("69fa4195670576c0160d660c3be36556ff8d504725be8a59b5a96509e0c994bc"));
-    
+    let shardus_crypto = Arc::new(crypto::ShardusCrypto::new(
+        "69fa4195670576c0160d660c3be36556ff8d504725be8a59b5a96509e0c994bc",
+    ));
+
     let gateway_url_cloned = gateway_url.clone();
 
     let mut wallets = generate_register_wallets(
-        &eoa_tps, 
-        &eoa, 
-        &gateway_type,
-        &gateway_url_cloned, 
+        &eoa_tps,
+        &eoa,
+        &gateway_url_cloned,
         Arc::clone(&shardus_crypto),
-        &verbosity
-    ).await;
-
+        &verbosity,
+    )
+    .await;
 
     println!("Waiting for 30 seconds before injecting transactions");
 
@@ -66,7 +70,6 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
 
     println!("Registered {} successful wallets", wallets.len());
 
-
     println!("Injecting transactions");
 
     let duration = tokio::time::Duration::from_secs(duration as u64);
@@ -74,17 +77,20 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
     let interval = tokio::time::Duration::from_secs_f64(1.0 / tps as f64);
     let mut interval_timer = tokio::time::interval(interval);
 
-    let (transmitter, mut receiver) = tokio::sync::mpsc::unbounded_channel::<
-        (transactions::TransferTransaction, Result<transactions::InjectedTxResp, String>)
-    >();
+    let (transmitter, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(
+        transactions::TransferTransaction,
+        Result<transactions::InjectedTxResp, String>,
+    )>();
 
     let gateway_url_long_live = gateway_url.clone();
     tokio::spawn(async move {
         // uses ARC internally
-        let http_client = reqwest::Client::builder().danger_accept_invalid_certs(true).build().unwrap();
+        let http_client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
 
         let long_live_transmitter = transmitter.clone();
-
 
         let sc = Arc::clone(&shardus_crypto);
         let long_live_wallet = wallets.clone();
@@ -101,7 +107,6 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
             while from == to {
                 to = rand::thread_rng().gen_range(0..wl.len());
             }
-            
 
             let transmitter = long_live_transmitter.clone();
 
@@ -109,28 +114,30 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
             tokio::spawn(async move {
                 let signers = wl[from].clone();
                 let to = wl[to].clone();
-                let tx = transactions::build_transfer_transaction(&*Arc::clone(&sc), &signers, &to.address(), 1);
+                let tx = transactions::build_transfer_transaction(
+                    &*Arc::clone(&sc),
+                    &signers,
+                    &to.address(),
+                    1,
+                );
                 let resp = match transactions::inject_transaction(
                     http_client,
                     &transactions::LiberdusTransactions::Transfer(tx.clone()),
-                    &gateway_type,
                     &gateway_url_for_detached_thread,
-                    &verbosity
-                    ).await {
-
+                    &verbosity,
+                )
+                .await
+                {
                     Ok(resp) => Ok(resp),
-                    Err(e) => {
-                        Err(e.to_string())
-                    },
+                    Err(e) => Err(e.to_string()),
                 };
 
                 transmitter.send((tx, resp)).unwrap();
             });
-
         }
     });
 
-    let mut stats = utils::InjectionStats{
+    let mut stats = utils::InjectionStats {
         total: 0,
         success: 0,
         failed: 0,
@@ -156,7 +163,7 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
                 Err(e_str) => {
                     verbose(&verbosity, &format!("Transfer failed from {}, to {}", from, to));
                     stats.failed += 1;
-                    
+
                     transactions::InjectedTxResp {
                         success: false,
                         reason: e_str,
@@ -176,7 +183,6 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
         "\rTotal: {:<10} Success: {:<10} Failed: {:<10}",
         stats.total, stats.success, stats.failed,
     );
-
 }
 
 pub async fn message(load_inject_params: LoadInjectParams) {
@@ -185,25 +191,25 @@ pub async fn message(load_inject_params: LoadInjectParams) {
         duration,
         eoa,
         gateway_url,
-        gateway_type,
         verbosity,
         eoa_tps,
         ..
     } = load_inject_params;
-    let shardus_crypto = Arc::new(crypto::ShardusCrypto::new("69fa4195670576c0160d660c3be36556ff8d504725be8a59b5a96509e0c994bc"));
-    
+    let shardus_crypto = Arc::new(crypto::ShardusCrypto::new(
+        "69fa4195670576c0160d660c3be36556ff8d504725be8a59b5a96509e0c994bc",
+    ));
+
     let gateway_url_cloned = gateway_url.clone();
 
-
-    let wallets =  { 
+    let wallets = {
         let mut w = generate_register_wallets(
-            &eoa_tps, 
-            &eoa, 
-            &gateway_type,
-            &gateway_url_cloned, 
+            &eoa_tps,
+            &eoa,
+            &gateway_url_cloned,
             Arc::clone(&shardus_crypto),
-            &verbosity
-        ).await;
+            &verbosity,
+        )
+        .await;
         println!("Waiting for 30 seconds before injecting Message transactions");
 
         tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
@@ -211,27 +217,24 @@ pub async fn message(load_inject_params: LoadInjectParams) {
         w
     };
 
-
     println!("Registered {} successful wallets", wallets.len());
 
-    if wallets.len() < 2  {
+    if wallets.len() < 2 {
         println!("Not Enough Wallets to conduct testing...., Killing Process");
         return;
     }
 
-
     println!("Injecting transactions");
-
 
     let duration = tokio::time::Duration::from_secs(duration as u64);
     let start_time = tokio::time::Instant::now();
     let interval = tokio::time::Duration::from_secs_f64(1.0 / tps as f64);
     let mut interval_timer = tokio::time::interval(interval);
 
-
-    let (transmitter, mut receiver) = tokio::sync::mpsc::unbounded_channel::<
-        (transactions::MessageTransaction, Result<transactions::InjectedTxResp,String>)
-    >();
+    let (transmitter, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(
+        transactions::MessageTransaction,
+        Result<transactions::InjectedTxResp, String>,
+    )>();
 
     let rpc_url_long_live = gateway_url.clone();
 
@@ -240,7 +243,10 @@ pub async fn message(load_inject_params: LoadInjectParams) {
 
         let sc = Arc::clone(&shardus_crypto);
         let long_live_wallet = Arc::new(wallets).clone();
-        let http_client = reqwest::Client::builder().danger_accept_invalid_certs(true).build().unwrap();
+        let http_client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
         while start_time.elapsed() < duration {
             interval_timer.tick().await;
 
@@ -263,27 +269,30 @@ pub async fn message(load_inject_params: LoadInjectParams) {
                 let from = &wl[from];
                 let to = &wl[to];
                 let message = utils::generate_random_string(30);
-                let tx = transactions::build_message_transaction(&*Arc::clone(&sc), &from, &to.address(), &message);
+                let tx = transactions::build_message_transaction(
+                    &*Arc::clone(&sc),
+                    &from,
+                    &to.address(),
+                    &message,
+                );
                 let resp = match transactions::inject_transaction(
                     http,
                     &transactions::LiberdusTransactions::Message(tx.clone()),
-                    &gateway_type.clone(),
                     &rpc_url_for_detached_thread,
-                    &verbosity
-                    ).await {
+                    &verbosity,
+                )
+                .await
+                {
                     Ok(resp) => Ok(resp),
-                    Err(e) => {
-                        Err(e.to_string())
-                    },
+                    Err(e) => Err(e.to_string()),
                 };
 
                 transmitter.send((tx, resp)).unwrap();
             });
-
         }
     });
 
-    let mut stats = utils::InjectionStats{
+    let mut stats = utils::InjectionStats {
         total: 0,
         success: 0,
         failed: 0,
@@ -338,50 +347,59 @@ pub async fn message(load_inject_params: LoadInjectParams) {
     );
 }
 
-pub async fn generate_register_wallets(tps: &usize, eoa: &usize, gateway_type: &GatewayType, gateway_url: &String, shardus_crypto: Arc<ShardusCrypto>, verbosity: &bool) -> Vec<PrivateKeySigner> {
-
+pub async fn generate_register_wallets(
+    tps: &usize,
+    eoa: &usize,
+    gateway_url: &String,
+    shardus_crypto: Arc<ShardusCrypto>,
+    verbosity: &bool,
+) -> Vec<PrivateKeySigner> {
     let mut signers = Vec::new();
     let interval = tokio::time::Duration::from_secs_f64(1.0 / *tps as f64);
     let mut interval_timer = tokio::time::interval(interval);
 
-    let (transmitter, mut receiver) = tokio::sync::mpsc::unbounded_channel::<
-        (PrivateKeySigner, Result<transactions::InjectedTxResp, String>)
-    >();
-
+    let (transmitter, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(
+        PrivateKeySigner,
+        Result<transactions::InjectedTxResp, String>,
+    )>();
 
     let gateway_url = gateway_url.clone();
     let eoa_moved = eoa.clone();
-    let gateway_type = gateway_type.clone();
     let verbosity = verbosity.clone();
     tokio::spawn(async move {
         let transmitter = transmitter.clone();
-        let http_client = reqwest::Client::builder().danger_accept_invalid_certs(true).build().unwrap();
+        let http_client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
         for _ in 0..eoa_moved {
             interval_timer.tick().await;
             let crypto = Arc::clone(&shardus_crypto);
             let url = gateway_url.clone();
 
-
             let transmitter = transmitter.clone();
             let http_client = http_client.clone();
             tokio::spawn(async move {
                 let signer = PrivateKeySigner::random();
-                let tx = transactions::build_register_transaction(&*Arc::clone(&crypto), &signer, &utils::generate_random_string(10));
+                let tx = transactions::build_register_transaction(
+                    &*Arc::clone(&crypto),
+                    &signer,
+                    &utils::generate_random_string(10),
+                );
                 let resp = match transactions::inject_transaction(
                     http_client,
                     &transactions::LiberdusTransactions::Register(tx.clone()),
-                    &gateway_type,
                     &url,
-                    &verbosity
-                    ).await {
+                    &verbosity,
+                )
+                .await
+                {
                     Ok(resp) => Ok(resp),
                     Err(e) => Err(e.to_string()),
                 };
 
                 transmitter.send((signer, resp)).unwrap();
-
             });
-
         }
     });
 
@@ -393,25 +411,35 @@ pub async fn generate_register_wallets(tps: &usize, eoa: &usize, gateway_type: &
                     utils::stdout_register_progress(*eoa, signers.len());
                 }
                 if resp.success != true {
-                    verbose(&verbosity, &format!("Failed to register wallet: {}", resp.reason));
+                    verbose(
+                        &verbosity,
+                        &format!("Failed to register wallet: {}", resp.reason),
+                    );
                 }
-            },
-            Err(e_str) => {
-                verbose(&verbosity, &format!("Failed to register wallet: {} Transaction Object likely malformed", e_str));
             }
-
+            Err(e_str) => {
+                verbose(
+                    &verbosity,
+                    &format!(
+                        "Failed to register wallet: {} Transaction Object likely malformed",
+                        e_str
+                    ),
+                );
+            }
         };
     }
 
     signers
 }
 
-
-async fn validate_filter_failed_register(wallets:  Vec<PrivateKeySigner>, gateway_url: &str, verbosity: &bool) -> Vec<PrivateKeySigner> {
-
+async fn validate_filter_failed_register(
+    wallets: Vec<PrivateKeySigner>,
+    gateway_url: &str,
+    verbosity: &bool,
+) -> Vec<PrivateKeySigner> {
     verbose(
-        &verbosity, 
-        format!("Filtering wallets that failed to register").as_str()
+        &verbosity,
+        format!("Filtering wallets that failed to register").as_str(),
     );
 
     let mut filtered_wallets = vec![];
@@ -427,15 +455,16 @@ async fn validate_filter_failed_register(wallets:  Vec<PrivateKeySigner>, gatewa
             let addr = utils::to_shardus_address(&wallet.address().to_string());
             let url = format!("{}/account/{}", &gateway_url_long_live, addr);
             let resp = proxy::request(None, &url).await;
-            
+
             match resp {
                 Ok(resp) => {
-                    let json: proxy::GetAccountResp = serde_json::from_value(resp).expect("Failed to parse gateway response");
+                    let json: proxy::GetAccountResp =
+                        serde_json::from_value(resp).expect("Failed to parse gateway response");
 
                     if json.account.is_some() {
                         transmitter.send(wallet).unwrap();
                     }
-                },
+                }
                 Err(e) => {
                     // eprintln!("Error: {}", e);
                 }
@@ -449,14 +478,15 @@ async fn validate_filter_failed_register(wallets:  Vec<PrivateKeySigner>, gatewa
 
     while let Some(wallet) = rx.recv().await {
         verbose(
-            &verbosity, 
-            format!("Successful Register {}", 
-                utils::to_shardus_address(
-                    &wallet.address().to_string())
-                ).as_str());
+            &verbosity,
+            format!(
+                "Successful Register {}",
+                utils::to_shardus_address(&wallet.address().to_string())
+            )
+            .as_str(),
+        );
         filtered_wallets.push(wallet);
     }
 
     filtered_wallets
-
 }

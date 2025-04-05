@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 #[allow(non_snake_case)]
 #[derive(Debug, serde::Deserialize)]
-pub struct MonitorApiReportResp{
+pub struct MonitorApiReportResp {
     pub nodes: MonitorApiNodelist,
 }
 
@@ -17,9 +17,7 @@ pub struct MonitorApiNodelist {
     standby: HashMap<String, serde_json::Value>,
 }
 
-pub async fn collect_joining(
-    monitor_server_url: &str,
-) -> Vec<String> {
+pub async fn collect_joining(monitor_server_url: &str) -> Vec<String> {
     let client = reqwest::Client::new();
     let full_url = format!("{}/api/report", monitor_server_url);
     let resp = match client.get(full_url).send().await {
@@ -46,9 +44,7 @@ pub async fn collect_joining(
     joining
 }
 
-pub async fn collect_active(
-    monitor_server_url: &str,
-) -> Vec<String> {
+pub async fn collect_active(monitor_server_url: &str) -> Vec<String> {
     let client = reqwest::Client::new();
     let full_url = format!("{}/api/report", monitor_server_url);
     let resp = match client.get(full_url).send().await {
@@ -75,9 +71,7 @@ pub async fn collect_active(
     joining
 }
 
-pub async fn collect_all(
-    monitor_server_url: &str,
-) -> Vec<String> {
+pub async fn collect_all(monitor_server_url: &str) -> Vec<String> {
     let mut joining = collect_joining(monitor_server_url).await;
     let active = collect_active(monitor_server_url).await;
 

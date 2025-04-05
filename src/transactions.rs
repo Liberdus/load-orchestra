@@ -1,12 +1,10 @@
-use crate::{ cli, proxy, crypto, load_injector::GatewayType, rpc, utils};
-use alloy::signers::{
-    k256::ecdsa::SigningKey, local::LocalSigner, SignerSync
-};
-use serde::{Serialize, Deserialize};
+use crate::{cli, crypto, proxy, utils};
+use alloy::signers::{k256::ecdsa::SigningKey, local::LocalSigner, SignerSync};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
-pub struct InjectedTxResp{
+pub struct InjectedTxResp {
     pub reason: String,
     pub status: u32,
     pub success: bool,
@@ -22,7 +20,7 @@ pub enum LiberdusTransactions {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChangeConfigTransaction{
+pub struct ChangeConfigTransaction {
     pub from: String,
     pub cycle: i64,
     pub config: String,
@@ -35,7 +33,7 @@ pub struct ChangeConfigTransaction{
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DepositStakeTransaction{
+pub struct DepositStakeTransaction {
     pub nominee: String,
     pub stake: ShardusBigIntSerialized,
     pub nominator: String,
@@ -53,7 +51,7 @@ pub struct ShardusSignature {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
-pub struct RegisterTransaction{
+pub struct RegisterTransaction {
     pub aliasHash: String,
     pub from: String,
     #[serde(rename = "type")]
@@ -65,7 +63,7 @@ pub struct RegisterTransaction{
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FriendTransaction{
+pub struct FriendTransaction {
     pub from: String,
     pub to: String,
     #[serde(rename = "type")]
@@ -77,7 +75,7 @@ pub struct FriendTransaction{
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
-pub struct MessageTransaction{
+pub struct MessageTransaction {
     pub from: String,
     pub to: String,
     pub amount: ShardusBigIntSerialized,
@@ -110,12 +108,11 @@ pub struct ShardusBigIntSerialized {
     pub value: String,
 }
 
-
 pub fn build_change_config_transaction(
-    shardus_crypto: &crypto::ShardusCrypto, 
-    signer: &LocalSigner<SigningKey>, 
-    cycle: i64, 
-    config: &String
+    shardus_crypto: &crypto::ShardusCrypto,
+    signer: &LocalSigner<SigningKey>,
+    cycle: i64,
+    config: &String,
 ) -> ChangeConfigTransaction {
     let from = signer.address().to_string();
     let now = std::time::SystemTime::now()
@@ -131,7 +128,8 @@ pub fn build_change_config_transaction(
         "timestamp": now,
     });
 
-    let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+    let signature =
+        eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
 
     ChangeConfigTransaction {
         from: utils::to_shardus_address(&from),
@@ -144,10 +142,10 @@ pub fn build_change_config_transaction(
 }
 
 pub fn build_message_transaction(
-    shardus_crypto: &crypto::ShardusCrypto, 
-    signer: &LocalSigner<SigningKey>, 
-    to: &alloy::primitives::Address, 
-    message: &String
+    shardus_crypto: &crypto::ShardusCrypto,
+    signer: &LocalSigner<SigningKey>,
+    to: &alloy::primitives::Address,
+    message: &String,
 ) -> MessageTransaction {
     let from = signer.address().to_string();
     let now = std::time::SystemTime::now()
@@ -161,7 +159,9 @@ pub fn build_message_transaction(
 
         let mut addresses = vec![from_address, to];
         addresses.sort();
-        let chat_id = shardus_crypto.hash(&addresses.join("").into_bytes(), crypto::Format::Hex).to_string();
+        let chat_id = shardus_crypto
+            .hash(&addresses.join("").into_bytes(), crypto::Format::Hex)
+            .to_string();
         chat_id
     };
     let tx = serde_json::json!({
@@ -177,7 +177,8 @@ pub fn build_message_transaction(
         "timestamp": now,
     });
 
-    let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+    let signature =
+        eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
 
     MessageTransaction {
         amount: ShardusBigIntSerialized {
@@ -192,15 +193,14 @@ pub fn build_message_transaction(
         timestamp: now,
         sign: signature,
     }
-
 }
 
 #[allow(dead_code)]
 pub fn build_friend_transaction(
-    shardus_crypto: &crypto::ShardusCrypto, 
-    signer: &LocalSigner<SigningKey>, 
+    shardus_crypto: &crypto::ShardusCrypto,
+    signer: &LocalSigner<SigningKey>,
     to: &alloy::primitives::Address,
-    alias: &String
+    alias: &String,
 ) -> FriendTransaction {
     let from = signer.address().to_string();
     let now = std::time::SystemTime::now()
@@ -215,7 +215,8 @@ pub fn build_friend_transaction(
         "timestamp": now,
     });
 
-    let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+    let signature =
+        eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
 
     FriendTransaction {
         from: utils::to_shardus_address(&from),
@@ -225,17 +226,14 @@ pub fn build_friend_transaction(
         timestamp: now,
         sign: signature,
     }
-
 }
 
-
 pub fn build_transfer_transaction(
-    shardus_crypto: &crypto::ShardusCrypto, 
-    from: &LocalSigner<SigningKey>, 
-    to: &alloy::primitives::Address, 
-    amount: u128
+    shardus_crypto: &crypto::ShardusCrypto,
+    from: &LocalSigner<SigningKey>,
+    to: &alloy::primitives::Address,
+    amount: u128,
 ) -> TransferTransaction {
-
     let address = from.address().to_string();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -249,7 +247,9 @@ pub fn build_transfer_transaction(
 
         let mut addresses = vec![from_address, to];
         addresses.sort();
-        let chat_id = shardus_crypto.hash(&addresses.join("").into_bytes(), crypto::Format::Hex).to_string();
+        let chat_id = shardus_crypto
+            .hash(&addresses.join("").into_bytes(), crypto::Format::Hex)
+            .to_string();
         chat_id
     };
 
@@ -264,10 +264,10 @@ pub fn build_transfer_transaction(
         "chatId": chat_id,
         "type": "transfer",
         "timestamp": now,
-    }); 
+    });
 
-    let signature = eth_sign_transaction(shardus_crypto, from, &tx).expect("Failed to sign transaction");
-
+    let signature =
+        eth_sign_transaction(shardus_crypto, from, &tx).expect("Failed to sign transaction");
 
     TransferTransaction {
         from: utils::to_shardus_address(&address),
@@ -285,10 +285,10 @@ pub fn build_transfer_transaction(
 }
 
 pub fn build_deposite_stake_transaction(
-    shardus_crypto: &crypto::ShardusCrypto, 
-    nominator: &LocalSigner<SigningKey>, 
-    nominee: &String, 
-    amount: u128
+    shardus_crypto: &crypto::ShardusCrypto,
+    nominator: &LocalSigner<SigningKey>,
+    nominee: &String,
+    amount: u128,
 ) -> DepositStakeTransaction {
     let nominator_address = nominator.address().to_string();
     let now = std::time::SystemTime::now()
@@ -305,9 +305,10 @@ pub fn build_deposite_stake_transaction(
         "nominator": utils::to_shardus_address(&nominator_address),
         "type": "deposit_stake",
         "timestamp": now,
-    }); 
+    });
 
-    let signature = eth_sign_transaction(shardus_crypto, nominator, &tx).expect("Failed to sign transaction");
+    let signature =
+        eth_sign_transaction(shardus_crypto, nominator, &tx).expect("Failed to sign transaction");
 
     DepositStakeTransaction {
         nominee: nominee.clone(),
@@ -322,16 +323,25 @@ pub fn build_deposite_stake_transaction(
     }
 }
 
-
-pub fn build_register_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &LocalSigner<SigningKey>, alias: &String) -> RegisterTransaction {
+pub fn build_register_transaction(
+    shardus_crypto: &crypto::ShardusCrypto,
+    signer: &LocalSigner<SigningKey>,
+    alias: &String,
+) -> RegisterTransaction {
     let address = signer.address().to_string();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis();
-    let alias_hash = shardus_crypto.hash(&alias.to_string().into_bytes(), crypto::Format::Hex).to_string();
+    let alias_hash = shardus_crypto
+        .hash(&alias.to_string().into_bytes(), crypto::Format::Hex)
+        .to_string();
 
-    let uncompressed_public_key = signer.credential().verifying_key().to_encoded_point(false).to_string();
+    let uncompressed_public_key = signer
+        .credential()
+        .verifying_key()
+        .to_encoded_point(false)
+        .to_string();
 
     let tx = serde_json::json!({
         "aliasHash": alias_hash,
@@ -340,10 +350,10 @@ pub fn build_register_transaction(shardus_crypto: &crypto::ShardusCrypto, signer
         "alias": &alias,
         "publicKey": uncompressed_public_key,
         "timestamp": now,
-    }); 
+    });
 
-    
-    let signature = eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
+    let signature =
+        eth_sign_transaction(shardus_crypto, signer, &tx).expect("Failed to sign transaction");
 
     RegisterTransaction {
         aliasHash: alias_hash,
@@ -356,10 +366,18 @@ pub fn build_register_transaction(shardus_crypto: &crypto::ShardusCrypto, signer
     }
 }
 
-pub fn eth_sign_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &LocalSigner<SigningKey>, tx: &serde_json::Value) -> Option<ShardusSignature> {
+pub fn eth_sign_transaction(
+    shardus_crypto: &crypto::ShardusCrypto,
+    signer: &LocalSigner<SigningKey>,
+    tx: &serde_json::Value,
+) -> Option<ShardusSignature> {
     let from_address = signer.address().to_string();
-    let message = shardus_crypto.hash(&tx.to_string().into_bytes(), crypto::Format::Hex).to_string();
-    let signature = signer.sign_message_sync(&message.clone().into_bytes()).expect("Failed to sign message");
+    let message = shardus_crypto
+        .hash(&tx.to_string().into_bytes(), crypto::Format::Hex)
+        .to_string();
+    let signature = signer
+        .sign_message_sync(&message.clone().into_bytes())
+        .expect("Failed to sign message");
 
     let parity_hex = match signature.v() {
         false => "1b",
@@ -367,104 +385,70 @@ pub fn eth_sign_transaction(shardus_crypto: &crypto::ShardusCrypto, signer: &Loc
     };
 
     let serialized_signature = match signature.to_k256() {
-        Ok(k) => {
-            Some( ShardusSignature {
-                owner: utils::to_shardus_address(&from_address),
-                sig: format!("0x{}{}", k.to_string().to_lowercase(), parity_hex),
-            })
-        },
-        Err(_e) => {
-            None
-        },
+        Ok(k) => Some(ShardusSignature {
+            owner: utils::to_shardus_address(&from_address),
+            sig: format!("0x{}{}", k.to_string().to_lowercase(), parity_hex),
+        }),
+        Err(_e) => None,
     };
 
     serialized_signature
 }
 
-pub async fn inject_transaction(http_client: reqwest::Client, tx: &LiberdusTransactions, gateway_type: &GatewayType, gateway_url: &String, verbosity: &bool) -> Result<InjectedTxResp, Box<dyn std::error::Error>> {
-
+pub async fn inject_transaction(
+    http_client: reqwest::Client,
+    tx: &LiberdusTransactions,
+    gateway_url: &String,
+    verbosity: &bool,
+) -> Result<InjectedTxResp, Box<dyn std::error::Error>> {
     let json_tx = match tx {
         LiberdusTransactions::Register(r) => {
             serde_json::to_value(r).expect("Failed to serialize transaction")
-        },
+        }
         LiberdusTransactions::Transfer(t) => {
             serde_json::to_value(t).expect("Failed to serialize transaction")
-        },
+        }
         LiberdusTransactions::Message(m) => {
             serde_json::to_value(m).expect("Failed to serialize transaction")
-        },
+        }
         LiberdusTransactions::DepositStake(d) => {
             serde_json::to_value(d).expect("Failed to serialize transaction")
-        },
+        }
         LiberdusTransactions::ChangeConfig(c) => {
             serde_json::to_value(c).expect("Failed to serialize transaction")
-        },
-    };  
+        }
+    };
 
-    let (payload, full_url) = match gateway_type {
-        GatewayType::Rpc => {
-            let payload = rpc::build_send_transaction_payload(&json_tx);
-            let url = gateway_url;
+    let (payload, full_url) = {
+        let payload = proxy::build_send_transaction_payload(&json_tx);
 
-            (payload, url)
-        },
-        GatewayType::Proxy => {
-            let payload = proxy::build_send_transaction_payload(&json_tx);
-
-            (payload, &format!("{}/inject", gateway_url))
-        },
-
+        (payload, &format!("{}/inject", gateway_url))
     };
 
     cli::verbose(verbosity, &format!("tx http payload {}", payload));
 
-    let resp = match http_client
-        .post(full_url)
-        .json(&payload)
-        .send()
-        .await {
-            Ok(resp) => {
-                resp
-            },
-            Err(e) => {
-                return Err(e.into());
-            },
-        };
+    let resp = match http_client.post(full_url).json(&payload).send().await {
+        Ok(resp) => resp,
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
 
-    match gateway_type {
-        GatewayType::Rpc => {
-            match resp.json::<rpc::RpcResponse<InjectedTxResp>>().await {
-                Ok(resp) => {
-                    if resp.result.is_some() {
-                        return Ok(resp.result.expect("Couldn't extract result from rpc response"));
-                    }
-                    else if resp.error.is_some() {
-                        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, resp.error.expect("Couldn't extract error from rpc response").message)));
-                    }
-                    else{
-                        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "RPC internal Failure")));
-                    }
-                },
-                Err(e) => {
-                    return Err(e.into());
-                },
+    match resp.json::<proxy::ProxyInjectedTxResp>().await {
+        Ok(resp) => {
+            if resp.result.is_some() && resp.error.is_none() {
+                return Ok(resp
+                    .result
+                    .expect("Couldn't extract result from rpc response"));
+            } else {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Tx Injection failed",
+                )));
             }
-            
-        },
-        GatewayType::Proxy => {
-            match resp.json::<proxy::ProxyInjectedTxResp>().await {
-                Ok(resp) => {
-                    if resp.result.is_some() && resp.error.is_none() {
-                        return Ok(resp.result.expect("Couldn't extract result from rpc response"));
-                    }else{
-                        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Tx Injection failed")));
-                    }
-                },
-                Err(e) => {
-                    return Err(e.into());
-                },
-            }
-        },
+        }
+        Err(e) => {
+            return Err(e.into());
+        }
     }
-
 }
