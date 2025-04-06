@@ -1,7 +1,7 @@
 use crate::{
     change_config,
     load_injector::{self},
-    monitor_server, rpc, stake, transactions,
+    monitor_server, proxy, rpc, stake, transactions,
 };
 use alloy::signers::local::PrivateKeySigner;
 use clap::{arg, command, ArgAction, ArgGroup, Command};
@@ -41,7 +41,7 @@ pub fn verbose(verbosity: &bool, message: &str) {
     }
 }
 
-pub fn change_config_subcommand() -> Command {
+fn change_config_subcommand() -> Command {
     Command::new("change_config")
         .about("Change the configuration of the network")
         .arg(
@@ -53,33 +53,14 @@ pub fn change_config_subcommand() -> Command {
         )
 }
 
-pub async fn execute_change_config_subcommand(matches: &clap::ArgMatches) {
+async fn execute_change_config_subcommand(matches: &clap::ArgMatches) {
     let gateway_url = match matches.get_one::<String>("gateway_url") {
         Some(url) => url,
-        None => &"http://0.0.0.0:8545".to_string(),
+        None => &"http://0.0.0.0:3030".to_string(),
     };
 
-    let payload = rpc::build_get_nodelist_payload();
-    let client = reqwest::Client::new();
-    let nodelist = client
-        .post(gateway_url)
-        .json(&payload)
-        .send()
-        .await
-        .expect("Failed to get nodelist")
-        .json::<rpc::RpcResponse<Vec<rpc::Consensor>>>()
-        .await
-        .expect("Failed to parse nodelist")
-        .result
-        .expect("Failed to get nodelist");
-
-    let node_url = format!("http://{}:{}/netconfig", nodelist[0].ip, nodelist[0].port);
-    let resp = reqwest::get(&node_url)
-        .await
-        .expect("Failed to get config")
-        .json::<serde_json::Value>()
-        .await
-        .expect("Failed to parse config");
+    let full_url = format!("{}/netconfig", gateway_url);
+    let resp = proxy::request(None, &full_url).await.unwrap();
 
     let change = match change_config::init(resp["config"].clone()) {
         Ok(Some(v)) => {
@@ -104,6 +85,7 @@ pub async fn execute_change_config_subcommand(matches: &clap::ArgMatches) {
 
     println!("Transaction: {:?}", tx);
 
+    let client = reqwest::Client::new();
     let resp = match transactions::inject_transaction(
         client,
         &transactions::LiberdusTransactions::ChangeConfig(tx),
@@ -121,7 +103,7 @@ pub async fn execute_change_config_subcommand(matches: &clap::ArgMatches) {
     println!("Response: {:?}", resp);
 }
 
-pub fn staking_subcommand() -> Command {
+fn staking_subcommand() -> Command {
     Command::new("stake")
         .about("Staking nodes")
         .arg(
@@ -197,7 +179,7 @@ pub fn staking_subcommand() -> Command {
         )
 }
 
-pub fn loadtest_subcommand() -> Command {
+fn loadtest_subcommand() -> Command {
     Command::new("sustain_load")
     .about("Inject Transactions for a duration")
     .arg(arg!(
@@ -243,7 +225,7 @@ pub fn loadtest_subcommand() -> Command {
         .value_parser(|s: &str| {
             s.parse::<usize>()
             .map_err(|_| format!("'{}' is not a valid number", s))
-        }),
+         }),
     )
     .arg(
         arg!(
@@ -263,7 +245,7 @@ pub fn loadtest_subcommand() -> Command {
     )
 }
 
-pub async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
+async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
     let tx_type = match matches.get_one::<String>("tx_type") {
         Some(tx_type) => tx_type.to_string(),
         None => panic!("No tx_type provided"),
@@ -316,7 +298,7 @@ pub async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
     }
 }
 
-pub async fn execute_staking_subcommand(matches: &clap::ArgMatches) {
+async fn execute_staking_subcommand(matches: &clap::ArgMatches) {
     let amount = matches.get_one::<u128>("amount").unwrap_or(&10);
 
     let joining = matches.get_flag("joining");

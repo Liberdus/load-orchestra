@@ -1,6 +1,24 @@
 use crate::transactions;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct NodeInfo {
+    pub id: String,
+    pub external_ip: String,
+    pub external_port: u16,
+    pub internal_ip: String,
+    pub internal_port: u16,
+    pub public_key: String,
+    pub curve_public_key: String,
+    pub status: String,
+    pub app_data: Option<serde_json::Value>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct NodeInfoResp {
+    pub nodeInfo: NodeInfo,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct GetAccountResp {
     pub account: Option<serde_json::Value>,
 }
@@ -11,6 +29,18 @@ pub fn build_send_transaction_payload(tx: &serde_json::Value) -> serde_json::Val
     });
 
     payload
+}
+
+pub async fn get_random_node(url: &str) -> Result<NodeInfoResp, Box<dyn std::error::Error>> {
+    let full_url = format!("{}/nodeinfo", url);
+
+    match request(None, &full_url).await {
+        Ok(res) => {
+            let node_info: NodeInfoResp = serde_json::from_value(res)?;
+            Ok(node_info)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 pub async fn request(
@@ -30,9 +60,7 @@ pub async fn request(
             let json: serde_json::Value = serde_json::from_str(&body)?;
             Ok(json)
         }
-        Err(e) => {
-            Err(Box::new(e))
-        }
+        Err(e) => Err(Box::new(e)),
     }
 }
 

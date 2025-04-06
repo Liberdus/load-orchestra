@@ -439,7 +439,9 @@ async fn validate_filter_failed_register(
 ) -> Vec<PrivateKeySigner> {
     verbose(
         verbosity,
-        "Filtering wallets that failed to register".to_string().as_str(),
+        "Filtering wallets that failed to register"
+            .to_string()
+            .as_str(),
     );
 
     let mut filtered_wallets = vec![];

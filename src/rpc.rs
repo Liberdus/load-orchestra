@@ -58,9 +58,7 @@ pub async fn request(
             let json: serde_json::Value = serde_json::from_str(&body)?;
             Ok(json)
         }
-        Err(e) => {
-            Err(Box::new(e))
-        }
+        Err(e) => Err(Box::new(e)),
     }
 }
 

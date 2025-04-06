@@ -159,7 +159,7 @@ pub fn build_message_transaction(
 
         let mut addresses = [from_address, to];
         addresses.sort();
-        
+
         shardus_crypto
             .hash(&addresses.join("").into_bytes(), crypto::Format::Hex)
             .to_string()
@@ -247,7 +247,7 @@ pub fn build_transfer_transaction(
 
         let mut addresses = [from_address, to];
         addresses.sort();
-        
+
         shardus_crypto
             .hash(&addresses.join("").into_bytes(), crypto::Format::Hex)
             .to_string()
@@ -384,8 +384,6 @@ pub fn eth_sign_transaction(
         true => "1c",
     };
 
-    
-
     match signature.to_k256() {
         Ok(k) => Some(ShardusSignature {
             owner: utils::to_shardus_address(&from_address),
@@ -447,8 +445,6 @@ pub async fn inject_transaction(
                 )))
             }
         }
-        Err(e) => {
-            Err(e.into())
-        }
+        Err(e) => Err(e.into()),
     }
 }
