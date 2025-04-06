@@ -452,16 +452,13 @@ async fn validate_filter_failed_register(
             let url = format!("{}/account/{}", &gateway_url_long_live, addr);
             let resp = proxy::get_request(None, &url).await;
 
-            match resp {
-                Ok(resp) => {
-                    let json: proxy::GetAccountResp =
-                        serde_json::from_value(resp).expect("Failed to parse gateway response");
+            if let Ok(resp) = resp {
+                let json: proxy::GetAccountResp =
+                    serde_json::from_value(resp).expect("Failed to parse gateway response");
 
-                    if json.account.is_some() {
-                        transmitter.send(wallet.clone()).unwrap();
-                    }
+                if json.account.is_some() {
+                    transmitter.send(wallet.clone()).unwrap();
                 }
-                _ => {}
             };
 
             drop(transmitter);
