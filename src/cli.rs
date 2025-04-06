@@ -60,7 +60,7 @@ async fn execute_change_config_subcommand(matches: &clap::ArgMatches) {
     };
 
     let full_url = format!("{}/netconfig", gateway_url);
-    let resp = proxy::request(None, &full_url).await.unwrap();
+    let resp = proxy::get_request(None, &full_url).await.unwrap();
 
     let change = match change_config::init(resp["config"].clone()) {
         Ok(Some(v)) => {

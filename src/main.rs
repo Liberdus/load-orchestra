@@ -4,7 +4,6 @@ mod crypto;
 mod load_injector;
 mod monitor_server;
 mod proxy;
-mod rpc;
 mod stake;
 mod transactions;
 mod utils;

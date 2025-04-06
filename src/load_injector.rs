@@ -9,12 +9,6 @@ use alloy::signers::local::PrivateKeySigner;
 use rand::{self, Rng};
 use std::sync::Arc;
 
-#[derive(Clone, Copy, Debug)]
-pub enum GatewayType {
-    Rpc,
-    Proxy,
-}
-
 #[derive(Debug)]
 pub struct LoadInjectParams {
     pub tx_type: String,
@@ -456,7 +450,7 @@ async fn validate_filter_failed_register(
         tokio::spawn(async move {
             let addr = utils::to_shardus_address(&wallet.address().to_string());
             let url = format!("{}/account/{}", &gateway_url_long_live, addr);
-            let resp = proxy::request(None, &url).await;
+            let resp = proxy::get_request(None, &url).await;
 
             match resp {
                 Ok(resp) => {
@@ -464,12 +458,10 @@ async fn validate_filter_failed_register(
                         serde_json::from_value(resp).expect("Failed to parse gateway response");
 
                     if json.account.is_some() {
-                        transmitter.send(wallet).unwrap();
+                        transmitter.send(wallet.clone()).unwrap();
                     }
                 }
-                Err(e) => {
-                    // eprintln!("Error: {}", e);
-                }
+                _ => {}
             };
 
             drop(transmitter);
