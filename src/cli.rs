@@ -1,7 +1,7 @@
 use crate::{
     change_config,
     load_injector::{self},
-    monitor_server, proxy, rpc, stake, transactions,
+    monitor_server, proxy, stake, transactions,
 };
 use alloy::signers::local::PrivateKeySigner;
 use clap::{arg, command, ArgAction, ArgGroup, Command};
