@@ -7,7 +7,25 @@ use crate::{
 };
 use alloy::signers::local::PrivateKeySigner;
 use rand::{self, Rng};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+const ACCOUNTS_FILE: &str = "./artifacts/registered_accounts.json";
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StoredAccount {
+    pub private_key: String,
+    pub address: String,
+    pub alias: String,
+    pub registration_tx_id: Option<String>,
+    pub registered_at: u128,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AccountsStorage {
+    pub accounts: Vec<StoredAccount>,
+    pub last_updated: u128,
+}
 
 #[derive(Debug)]
 pub struct LoadInjectParams {
@@ -18,6 +36,7 @@ pub struct LoadInjectParams {
     pub eoa_tps: usize,
     pub gateway_url: String,
     pub verbosity: bool,
+    pub reuse_accounts: bool,
 }
 
 pub async fn transfer(load_inject_params: LoadInjectParams) {
@@ -28,6 +47,7 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
         gateway_url,
         verbosity,
         eoa_tps,
+        reuse_accounts,
         ..
     } = load_inject_params;
 
@@ -42,12 +62,13 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
 
     let gateway_url_cloned = gateway_url.clone();
 
-    let mut wallets = generate_register_wallets(
+    let mut wallets = get_wallets(
         &eoa_tps,
         &eoa,
         &gateway_url_cloned,
         Arc::clone(&shardus_crypto),
         &verbosity,
+        reuse_accounts,
     )
     .await;
 
@@ -187,6 +208,7 @@ pub async fn message(load_inject_params: LoadInjectParams) {
         gateway_url,
         verbosity,
         eoa_tps,
+        reuse_accounts,
         ..
     } = load_inject_params;
     let shardus_crypto = Arc::new(crypto::ShardusCrypto::new(
@@ -196,12 +218,13 @@ pub async fn message(load_inject_params: LoadInjectParams) {
     let gateway_url_cloned = gateway_url.clone();
 
     let wallets = {
-        let mut w = generate_register_wallets(
+        let mut w = get_wallets(
             &eoa_tps,
             &eoa,
             &gateway_url_cloned,
             Arc::clone(&shardus_crypto),
             &verbosity,
+            reuse_accounts,
         )
         .await;
         println!("Waiting for 30 seconds before injecting Message transactions");
@@ -341,7 +364,97 @@ pub async fn message(load_inject_params: LoadInjectParams) {
     );
 }
 
+/// Get wallets either by loading from file or registering new ones
+pub async fn get_wallets(
+    tps: &usize,
+    eoa: &usize,
+    gateway_url: &String,
+    shardus_crypto: Arc<ShardusCrypto>,
+    verbosity: &bool,
+    reuse_accounts: bool,
+) -> Vec<PrivateKeySigner> {
+    if reuse_accounts {
+        // Try to load existing accounts first
+        match load_accounts_from_file(*eoa, verbosity).await {
+            Ok(loaded_accounts) => {
+                if loaded_accounts.len() >= *eoa {
+                    verbose(verbosity, &format!("Using {} loaded accounts", loaded_accounts.len()));
+                    return loaded_accounts.into_iter().take(*eoa).collect();
+                } else {
+                    verbose(
+                        verbosity,
+                        &format!(
+                            "Only {} accounts loaded, need {}. Registering {} more accounts.",
+                            loaded_accounts.len(),
+                            *eoa,
+                            *eoa - loaded_accounts.len()
+                        ),
+                    );
+                    
+                    // Register additional accounts needed
+                    let additional_needed = *eoa - loaded_accounts.len();
+                    let mut new_accounts = generate_register_wallets_internal(
+                        tps,
+                        &additional_needed,
+                        gateway_url,
+                        Arc::clone(&shardus_crypto),
+                        verbosity,
+                    )
+                    .await;
+                    
+                    // Save the new accounts
+                    let accounts_to_save: Vec<(PrivateKeySigner, String, Option<String>)> = new_accounts
+                        .iter()
+                        .map(|signer| (signer.clone(), utils::generate_random_string(10), None))
+                        .collect();
+                    
+                    if let Err(e) = save_accounts_to_file(&accounts_to_save, verbosity).await {
+                        verbose(verbosity, &format!("Failed to save new accounts: {}", e));
+                    }
+                    
+                    // Combine loaded and new accounts
+                    let mut combined_accounts = loaded_accounts;
+                    combined_accounts.append(&mut new_accounts);
+                    return combined_accounts;
+                }
+            }
+            Err(e) => {
+                verbose(
+                    verbosity,
+                    &format!("Failed to load accounts: {}. Registering new accounts.", e),
+                );
+                // Fall through to register new accounts
+            }
+        }
+    }
+    
+    // Register new accounts
+    let new_signers = generate_register_wallets_internal(tps, eoa, gateway_url, shardus_crypto, verbosity).await;
+    
+    // Save the newly registered accounts
+    let accounts_to_save: Vec<(PrivateKeySigner, String, Option<String>)> = new_signers
+        .iter()
+        .map(|signer| (signer.clone(), utils::generate_random_string(10), None))
+        .collect();
+    
+    if let Err(e) = save_accounts_to_file(&accounts_to_save, verbosity).await {
+        verbose(verbosity, &format!("Failed to save accounts: {}", e));
+    }
+    
+    new_signers
+}
+
 pub async fn generate_register_wallets(
+    tps: &usize,
+    eoa: &usize,
+    gateway_url: &String,
+    shardus_crypto: Arc<ShardusCrypto>,
+    verbosity: &bool,
+) -> Vec<PrivateKeySigner> {
+    generate_register_wallets_internal(tps, eoa, gateway_url, shardus_crypto, verbosity).await
+}
+
+async fn generate_register_wallets_internal(
     tps: &usize,
     eoa: &usize,
     gateway_url: &String,
@@ -480,4 +593,91 @@ async fn validate_filter_failed_register(
     }
 
     filtered_wallets
+}
+
+/// Save registered accounts to JSON file
+pub async fn save_accounts_to_file(
+    accounts: &[(PrivateKeySigner, String, Option<String>)], // (signer, alias, tx_id)
+    verbosity: &bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let stored_accounts: Vec<StoredAccount> = accounts
+        .iter()
+        .map(|(signer, alias, tx_id)| StoredAccount {
+            private_key: hex::encode(signer.to_bytes()),
+            address: signer.address().to_string(),
+            alias: alias.clone(),
+            registration_tx_id: tx_id.clone(),
+            registered_at: now,
+        })
+        .collect();
+
+    // Load existing accounts if file exists
+    let mut existing_storage = load_accounts_from_file_internal().unwrap_or_else(|_| AccountsStorage {
+        accounts: Vec::new(),
+        last_updated: now,
+    });
+
+    // Add new accounts to existing ones (avoid duplicates by address)
+    for new_account in stored_accounts {
+        if !existing_storage.accounts.iter().any(|acc| acc.address == new_account.address) {
+            existing_storage.accounts.push(new_account);
+        }
+    }
+
+    existing_storage.last_updated = now;
+
+    // Ensure artifacts directory exists
+    std::fs::create_dir_all("./artifacts")?;
+
+    // Write to file
+    let json = serde_json::to_string_pretty(&existing_storage)?;
+    std::fs::write(ACCOUNTS_FILE, json)?;
+
+    verbose(
+        verbosity,
+        &format!("Saved {} accounts to {}", existing_storage.accounts.len(), ACCOUNTS_FILE),
+    );
+
+    Ok(())
+}
+
+/// Load accounts from JSON file
+pub async fn load_accounts_from_file(
+    max_accounts: usize,
+    verbosity: &bool,
+) -> Result<Vec<PrivateKeySigner>, Box<dyn std::error::Error>> {
+    let storage = load_accounts_from_file_internal()?;
+    
+    let accounts_to_load = std::cmp::min(max_accounts, storage.accounts.len());
+    let mut signers = Vec::new();
+
+    for stored_account in storage.accounts.iter().take(accounts_to_load) {
+        let private_key_bytes = hex::decode(&stored_account.private_key)?;
+        if private_key_bytes.len() != 32 {
+            return Err("Invalid private key length".into());
+        }
+        let mut key_array = [0u8; 32];
+        key_array.copy_from_slice(&private_key_bytes);
+        let signer = PrivateKeySigner::from_bytes(&key_array.into())?;
+        signers.push(signer);
+    }
+
+    verbose(
+        verbosity,
+        &format!("Loaded {} accounts from {}", signers.len(), ACCOUNTS_FILE),
+    );
+
+    Ok(signers)
+}
+
+/// Internal function to load accounts storage from file
+fn load_accounts_from_file_internal() -> Result<AccountsStorage, Box<dyn std::error::Error>> {
+    let content = std::fs::read_to_string(ACCOUNTS_FILE)?;
+    let storage: AccountsStorage = serde_json::from_str(&content)?;
+    Ok(storage)
 }

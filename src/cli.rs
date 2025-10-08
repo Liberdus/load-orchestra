@@ -243,6 +243,13 @@ fn loadtest_subcommand() -> Command {
             s.parse::<String>()
         })
     )
+    .arg(
+        arg!(
+            --reuse_accounts "Reuse existing accounts from JSON file instead of registering new ones"
+        )
+        .required(false)
+        .action(ArgAction::SetTrue)
+    )
 }
 
 async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
@@ -273,6 +280,8 @@ async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
 
     let eoa_tps = matches.get_one::<usize>("eoa_tps").unwrap_or(&4);
 
+    let reuse_accounts = matches.get_flag("reuse_accounts");
+
     let args = load_injector::LoadInjectParams {
         tx_type,
         eoa_tps: *eoa_tps,
@@ -281,6 +290,7 @@ async fn execute_loadtest_subcommand(matches: &clap::ArgMatches) {
         eoa: *eoa,
         gateway_url: gateway_url.to_string(),
         verbosity: *verbosity,
+        reuse_accounts,
     };
 
     println!("{:?}", args);

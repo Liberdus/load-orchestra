@@ -1,6 +1,17 @@
 use crate::{cli, crypto, proxy, utils};
 use alloy::signers::{k256::ecdsa::SigningKey, local::LocalSigner, SignerSync};
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+
+static NETWORK_ID: OnceLock<String> = OnceLock::new();
+
+fn get_network_id() -> &'static str {
+    NETWORK_ID.get_or_init(|| {
+        dotenvy::dotenv().ok();
+        std::env::var("NETWORK_ID")
+            .unwrap_or_else(|_| "liberdus-default".to_string())
+    })
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
@@ -24,6 +35,7 @@ pub struct ChangeConfigTransaction {
     pub from: String,
     pub cycle: i64,
     pub config: String,
+    pub networkId: String,
     pub sign: ShardusSignature,
 
     #[serde(rename = "type")]
@@ -39,6 +51,7 @@ pub struct DepositStakeTransaction {
     pub nominator: String,
     #[serde(rename = "type")]
     pub transaction_type: String,
+    pub networkId: String,
     pub timestamp: u128,
     pub sign: ShardusSignature,
 }
@@ -58,6 +71,7 @@ pub struct RegisterTransaction {
     pub transaction_type: String,
     pub alias: String,
     pub publicKey: String,
+    pub networkId: String,
     pub timestamp: u128,
     pub sign: ShardusSignature,
 }
@@ -69,6 +83,7 @@ pub struct FriendTransaction {
     #[serde(rename = "type")]
     pub transaction_type: String,
     pub alias: String,
+    pub networkId: String,
     pub timestamp: u128,
     pub sign: ShardusSignature,
 }
@@ -83,6 +98,7 @@ pub struct MessageTransaction {
     pub transaction_type: String,
     pub chatId: String,
     pub message: String,
+    pub networkId: String,
     pub timestamp: u128,
     pub sign: ShardusSignature,
 }
@@ -94,6 +110,7 @@ pub struct TransferTransaction {
     pub amount: ShardusBigIntSerialized,
     #[serde(rename = "type")]
     pub transaction_type: String,
+    pub networkId: String,
     pub timestamp: u128,
     pub memo: Option<String>,
     #[allow(non_snake_case)]
@@ -125,6 +142,7 @@ pub fn build_change_config_transaction(
         "cycle": cycle,
         "type": "change_config".to_string(),
         "config": config,
+        "networkId": get_network_id(),
         "timestamp": now,
     });
 
@@ -135,6 +153,7 @@ pub fn build_change_config_transaction(
         from: utils::to_shardus_address(&from),
         cycle,
         config: config.clone(),
+        networkId: get_network_id().to_string(),
         transaction_type: "change_config".to_string(),
         timestamp: now,
         sign: signature,
@@ -168,12 +187,13 @@ pub fn build_message_transaction(
         "from": utils::to_shardus_address(&from),
         "amount": serde_json::json!({
             "dataType": "bi",
-            "value": "1",
+            "value": "25000000000000000000",
         }),
         "to": utils::to_shardus_address(&to.to_string()),
         "type": "message",
         "chatId": chat_id,
         "message": message,
+        "networkId": get_network_id(),
         "timestamp": now,
     });
 
@@ -183,13 +203,14 @@ pub fn build_message_transaction(
     MessageTransaction {
         amount: ShardusBigIntSerialized {
             dataType: "bi".to_string(),
-            value: "1".to_string(),
+            value: "25000000000000000000".to_string(),
         },
         from: utils::to_shardus_address(&from),
         to: utils::to_shardus_address(&to.to_string()),
         transaction_type: "message".to_string(),
         chatId: chat_id,
         message: message.clone(),
+        networkId: get_network_id().to_string(),
         timestamp: now,
         sign: signature,
     }
@@ -212,6 +233,7 @@ pub fn build_friend_transaction(
         "to": utils::to_shardus_address(&to.to_string()),
         "type": "friend",
         "alias": alias,
+        "networkId": get_network_id(),
         "timestamp": now,
     });
 
@@ -223,6 +245,7 @@ pub fn build_friend_transaction(
         to: utils::to_shardus_address(&to.to_string()),
         transaction_type: "friend".to_string(),
         alias: alias.clone(),
+        networkId: get_network_id().to_string(),
         timestamp: now,
         sign: signature,
     }
@@ -263,6 +286,7 @@ pub fn build_transfer_transaction(
         "memo": "Liberdus Testing Framework Transaction",
         "chatId": chat_id,
         "type": "transfer",
+        "networkId": get_network_id(),
         "timestamp": now,
     });
 
@@ -279,6 +303,7 @@ pub fn build_transfer_transaction(
         memo: Some("Liberdus Testing Framework Transaction".to_string()),
         chatId: chat_id,
         transaction_type: "transfer".to_string(),
+        networkId: get_network_id().to_string(),
         timestamp: now,
         sign: signature,
     }
@@ -304,6 +329,7 @@ pub fn build_deposite_stake_transaction(
         }),
         "nominator": utils::to_shardus_address(&nominator_address),
         "type": "deposit_stake",
+        "networkId": get_network_id(),
         "timestamp": now,
     });
 
@@ -318,6 +344,7 @@ pub fn build_deposite_stake_transaction(
         },
         nominator: utils::to_shardus_address(&nominator_address),
         transaction_type: "deposit_stake".to_string(),
+        networkId: get_network_id().to_string(),
         timestamp: now,
         sign: signature,
     }
@@ -349,6 +376,7 @@ pub fn build_register_transaction(
         "type": "register",
         "alias": &alias,
         "publicKey": uncompressed_public_key,
+        "networkId": get_network_id(),
         "timestamp": now,
     });
 
@@ -361,6 +389,7 @@ pub fn build_register_transaction(
         transaction_type: "register".to_string(),
         alias: alias.clone(),
         publicKey: uncompressed_public_key,
+        networkId: get_network_id().to_string(),
         timestamp: now,
         sign: signature,
     }
@@ -428,23 +457,37 @@ pub async fn inject_transaction(
     let resp = match http_client.post(full_url).json(&payload).send().await {
         Ok(resp) => resp,
         Err(e) => {
+            cli::verbose(verbosity, &format!("HTTP request failed: {}", e));
             return Err(e.into());
         }
     };
 
-    match resp.json::<proxy::ProxyInjectedTxResp>().await {
+    // Get the raw response text for logging
+    let response_text = resp.text().await?;
+    cli::verbose(verbosity, &format!("raw response: {}", response_text));
+
+    // Parse the response text as JSON
+    match serde_json::from_str::<proxy::ProxyInjectedTxResp>(&response_text) {
         Ok(resp) => {
             if resp.result.is_some() && resp.error.is_none() {
-                Ok(resp
+                let result = resp
                     .result
-                    .expect("Couldn't extract result from rpc response"))
+                    .expect("Couldn't extract result from rpc response");
+                
+                cli::verbose(verbosity, &format!("tx injection result: {:?}", result));
+                
+                Ok(result)
             } else {
+                cli::verbose(verbosity, &format!("tx injection failed - parsed resp: {:?}", resp));
                 Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "Tx Injection failed",
                 )))
             }
         }
-        Err(e) => Err(e.into()),
+        Err(e) => {
+            cli::verbose(verbosity, &format!("failed to parse response as JSON: {}", e));
+            Err(e.into())
+        }
     }
 }
