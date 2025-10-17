@@ -5,7 +5,7 @@ use crate::{
     transactions::{self},
     utils,
 };
-use alloy::signers::local::PrivateKeySigner;
+use alloy::signers::local::PrivateKeySigner;  
 use rand::{self, Rng};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -72,11 +72,13 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
     )
     .await;
 
-    println!("Waiting for 30 seconds before injecting transactions");
-
-    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-
-    wallets = validate_filter_failed_register(wallets, &gateway_url, &verbosity).await;
+    if reuse_accounts {
+        println!("Reusing existing accounts, skipping wait time and validation before injecting transactions");
+    } else {
+        println!("Waiting for 30 seconds before injecting transactions");
+        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        wallets = validate_filter_failed_register(wallets, &gateway_url, &verbosity).await;
+    }
 
     if wallets.len() < 2 {
         println!("Couldn't register enough wallets to conduct test, shuting down...");
@@ -227,11 +229,18 @@ pub async fn message(load_inject_params: LoadInjectParams) {
             reuse_accounts,
         )
         .await;
-        println!("Waiting for 30 seconds before injecting Message transactions");
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-        w = validate_filter_failed_register(w, &gateway_url, &verbosity).await;
-        w
+        // wait only if we are not reusing accounts
+        if reuse_accounts {
+            println!("Reusing existing accounts, skipping wait time before injecting Message transactions");
+            println!("Skipping account validation for reused accounts");
+            w
+        } else {
+            println!("Waiting for 30 seconds before injecting Message transactions");
+            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            w = validate_filter_failed_register(w, &gateway_url, &verbosity).await;
+            w
+        }
     };
 
     println!("Registered {} successful wallets", wallets.len());
@@ -289,9 +298,26 @@ pub async fn message(load_inject_params: LoadInjectParams) {
                 let tx = transactions::build_message_transaction(
                     &Arc::clone(&sc),
                     from,
-                    &to.address(),
-                    &message,
-                );
+                        &to.address(),
+                        &message,
+                    );
+                    // println!("built message tx: {:?}", tx);
+                    
+                    // // Verify the message transaction signature
+                    // let verification_result = verify_message_transaction_signature(&tx, &Arc::clone(&sc), from);
+                    // match verification_result {
+                    //     Ok(is_valid) => {
+                    //         if is_valid {
+                    //             println!("✓ Message transaction signature is valid");
+                    //         } else {
+                    //             println!("✗ Message transaction signature is INVALID");
+                    //         }
+                    //     }
+                    //     Err(e) => {
+                    //         println!("✗ Error verifying signature: {}", e);
+                    //     }
+                    // }
+
                 let resp = match transactions::inject_transaction(
                     http,
                     &transactions::LiberdusTransactions::Message(tx.clone()),
@@ -680,4 +706,33 @@ fn load_accounts_from_file_internal() -> Result<AccountsStorage, Box<dyn std::er
     let content = std::fs::read_to_string(ACCOUNTS_FILE)?;
     let storage: AccountsStorage = serde_json::from_str(&content)?;
     Ok(storage)
+}
+
+/// Verify the signature of a message transaction
+fn verify_message_transaction_signature(
+    tx: &transactions::MessageTransaction,
+    shardus_crypto: &Arc<ShardusCrypto>,
+    signer: &PrivateKeySigner,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    // Reconstruct the original transaction JSON that was signed (without the signature)
+    let original_tx = serde_json::json!({
+        "from": tx.from,
+        "amount": tx.amount,
+        "to": tx.to,
+        "type": tx.transaction_type,
+        "chatId": tx.chatId,
+        "message": tx.message,
+        "networkId": tx.networkId,
+        "timestamp": tx.timestamp,
+        "xmessage": tx.xmessage,
+        "fee": tx.fee,
+    });
+
+    // Use the new eth_verify_signature function
+    transactions::eth_verify_signature(
+        shardus_crypto,
+        &original_tx,
+        &tx.sign,
+        &signer.address(),
+    )
 }
