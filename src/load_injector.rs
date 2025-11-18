@@ -6,7 +6,9 @@ use crate::{
     utils,
 };
 use alloy::signers::local::PrivateKeySigner;  
-use rand::{self, Rng};
+use rand::{self, Rng, SeedableRng};
+use rand::rngs::StdRng;
+use std::hash::Hasher;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -27,6 +29,12 @@ pub struct AccountsStorage {
     pub last_updated: u128,
 }
 
+#[derive(Debug, Clone)]
+pub struct WalletWithTargets {
+    pub wallet: PrivateKeySigner,
+    pub target_addresses: Vec<alloy::primitives::Address>,
+}
+
 #[derive(Debug)]
 pub struct LoadInjectParams {
     pub tx_type: String,
@@ -37,6 +45,52 @@ pub struct LoadInjectParams {
     pub gateway_url: String,
     pub verbosity: bool,
     pub reuse_accounts: bool,
+}
+
+/// Deterministically pre-select target addresses for each wallet
+fn preselect_targets(wallets: &[PrivateKeySigner], targets_per_wallet: usize) -> Vec<WalletWithTargets> {
+    wallets
+        .iter()
+        .map(|sender_wallet| {
+            // Use the sender's address as seed for deterministic selection
+            let sender_address = sender_wallet.address();
+            let seed = {
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                std::hash::Hash::hash(&sender_address, &mut hasher);
+                hasher.finish()
+            };
+            
+            let mut rng = StdRng::seed_from_u64(seed);
+            let mut target_addresses = Vec::new();
+            
+            // Get all possible target addresses (excluding sender)
+            let possible_targets: Vec<alloy::primitives::Address> = wallets
+                .iter()
+                .map(|w| w.address())
+                .filter(|addr| *addr != sender_address)
+                .collect();
+            
+            // If we don't have enough wallets, repeat the available ones
+            if possible_targets.is_empty() {
+                // Edge case: only one wallet, can't send to itself
+                return WalletWithTargets {
+                    wallet: sender_wallet.clone(),
+                    target_addresses: vec![],
+                };
+            }
+            
+            // Select targets_per_wallet addresses (with repetition if necessary)
+            for _ in 0..targets_per_wallet {
+                let idx = rng.gen_range(0..possible_targets.len());
+                target_addresses.push(possible_targets[idx]);
+            }
+            
+            WalletWithTargets {
+                wallet: sender_wallet.clone(),
+                target_addresses,
+            }
+        })
+        .collect()
 }
 
 pub async fn transfer(load_inject_params: LoadInjectParams) {
@@ -87,6 +141,10 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
 
     println!("Registered {} successful wallets", wallets.len());
 
+    // Pre-select 20 target addresses for each wallet deterministically
+    let wallets_with_targets = preselect_targets(&wallets, 10);
+    println!("Pre-selected target addresses for each wallet");
+
     println!("Injecting transactions");
 
     let duration = tokio::time::Duration::from_secs(duration as u64);
@@ -110,31 +168,35 @@ pub async fn transfer(load_inject_params: LoadInjectParams) {
         let long_live_transmitter = transmitter.clone();
 
         let sc = Arc::clone(&shardus_crypto);
-        let long_live_wallet = wallets.clone();
+        let long_live_wallet = wallets_with_targets.clone();
         while start_time.elapsed() < duration {
             interval_timer.tick().await;
             let sc = Arc::clone(&sc);
             let wl = long_live_wallet.clone();
             let http_client = http_client.clone();
 
-            // make sure the from and to are not the same
-            let from = rand::thread_rng().gen_range(0..wl.len());
-            let mut to = rand::thread_rng().gen_range(0..wl.len());
-
-            while from == to {
-                to = rand::thread_rng().gen_range(0..wl.len());
+            // Select a random sender wallet
+            let from_idx = rand::thread_rng().gen_range(0..wl.len());
+            let sender_wallet = wl[from_idx].clone();
+            
+            // Skip if this wallet has no targets (edge case)
+            if sender_wallet.target_addresses.is_empty() {
+                continue;
             }
+            
+            // Select a random target from the sender's pre-selected targets
+            let target_idx = rand::thread_rng().gen_range(0..sender_wallet.target_addresses.len());
+            let to_address = sender_wallet.target_addresses[target_idx];
 
             let transmitter = long_live_transmitter.clone();
 
             let gateway_url_for_detached_thread = gateway_url_long_live.clone();
             tokio::spawn(async move {
-                let signers = wl[from].clone();
-                let to = wl[to].clone();
+                let signers = sender_wallet.wallet.clone();
                 let tx = transactions::build_transfer_transaction(
                     &Arc::clone(&sc),
                     &signers,
-                    &to.address(),
+                    &to_address,
                     1,
                 );
                 let resp = match transactions::inject_transaction(
@@ -245,6 +307,10 @@ pub async fn message(load_inject_params: LoadInjectParams) {
 
     println!("Registered {} successful wallets", wallets.len());
 
+    // Pre-select 20 target addresses for each wallet deterministically  
+    let wallets_with_targets = preselect_targets(&wallets, 10);
+    println!("Pre-selected target addresses for each wallet");
+
     if wallets.len() < 2 {
         println!("Not Enough Wallets to conduct testing...., Killing Process");
         return;
@@ -268,7 +334,7 @@ pub async fn message(load_inject_params: LoadInjectParams) {
         let long_live_transmitter = transmitter.clone();
 
         let sc = Arc::clone(&shardus_crypto);
-        let long_live_wallet = Arc::new(wallets).clone();
+        let long_live_wallet = Arc::new(wallets_with_targets).clone();
         let http_client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
             .build()
@@ -280,25 +346,29 @@ pub async fn message(load_inject_params: LoadInjectParams) {
 
             let wl = long_live_wallet.clone();
 
-            // make sure the from and to are not the same
-            let from = rand::thread_rng().gen_range(0..wl.len());
-            let mut to = rand::thread_rng().gen_range(0..wl.len());
-
-            while from == to {
-                to = rand::thread_rng().gen_range(0..wl.len());
+            // Select a random sender wallet
+            let from_idx = rand::thread_rng().gen_range(0..wl.len());
+            let sender_wallet = wl[from_idx].clone();
+            
+            // Skip if this wallet has no targets (edge case)
+            if sender_wallet.target_addresses.is_empty() {
+                continue;
             }
+            
+            // Select a random target from the sender's pre-selected targets
+            let target_idx = rand::thread_rng().gen_range(0..sender_wallet.target_addresses.len());
+            let to_address = sender_wallet.target_addresses[target_idx];
 
             let transmitter = long_live_transmitter.clone();
             let rpc_url_for_detached_thread = rpc_url_long_live.clone();
             let http = http_client.clone();
             tokio::spawn(async move {
-                let from = &wl[from];
-                let to = &wl[to];
+                let from = &sender_wallet.wallet;
                 let message = utils::generate_random_string(30);
                 let tx = transactions::build_message_transaction(
                     &Arc::clone(&sc),
                     from,
-                        &to.address(),
+                        &to_address,
                         &message,
                     );
                     // println!("built message tx: {:?}", tx);
